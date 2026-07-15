@@ -12,6 +12,9 @@
     "db:seed": "npx prisma db seed",
     "test": "node --experimental-vm-modules node_modules/.bin/vitest run"
   },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
   },
