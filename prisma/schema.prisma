@@ -1,0 +1,486 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified DateTime?
+  password      String?
+  image         String?
+  role          String    @default("user")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts      Account[]
+  sessions      Session[]
+  contents      Content[]
+  comments      Comment[]
+  auditRuns     AuditRun[]
+  microApps     MicroApp[]
+  contentTemplates ContentTemplate[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Content {
+  id              String   @id @default(cuid())
+  title           String
+  body            String
+  topic           String?
+  tags            String   @default("[]")
+  brief           String?
+  tone            String   @default("professional")
+  status          String   @default("draft")
+  contentType     String   @default("social_post")
+  metaTitle       String?
+  metaDescription String?
+  targetKeyword   String?
+  locationTag     String?
+  authorId        String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  author          User     @relation(fields: [authorId], references: [id])
+  comments        Comment[]
+  scheduledPosts  ScheduledPost[]
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  text      String
+  authorId  String
+  contentId String
+  mentions  String   @default("[]")
+  createdAt DateTime @default(now())
+  author    User     @relation(fields: [authorId], references: [id])
+  content   Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@index([contentId])
+}
+
+model ScheduledPost {
+  id             String   @id @default(cuid())
+  contentId      String
+  platform       String
+  scheduledFor   DateTime
+  status         String   @default("queued")
+  publishedAt    DateTime?
+  idempotencyKey String   @unique
+  leadCaptureEmail String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  content        Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@index([scheduledFor])
+  @@index([status])
+}
+
+model HistoryEvent {
+  id          String   @id @default(cuid())
+  action      String
+  platform    String?
+  contentId   String?
+  userId      String?
+  details     String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model AuditRun {
+  id          String   @id @default(cuid())
+  type        String
+  url         String
+  result      String
+  score       Int
+  findings    String   @default("[]")
+  userId      String
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model Connection {
+  id            String   @id @default(cuid())
+  platform      String
+  label         String?              // e.g. "JP Personal", "RHS Business"
+  status        String   @default("disconnected")
+  accountId     String?              // Composio ca_ nano ID
+  accountName   String?
+  accessToken   String?
+  refreshToken   String?
+  expiresAt     DateTime?
+  userId        String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model GhlSync {
+  id          String   @id @default(cuid())
+  contactName String
+  email       String?
+  action      String
+  pipeline    String?
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+}
+
+// ── GoHighLevel Business OS ───────────────────────────────────
+
+model GhlContact {
+  id              String   @id @default(cuid())
+  ghlId           String?  @unique            // GHL contact ID if synced
+  firstName       String?
+  lastName        String?
+  email           String?
+  phone           String?
+  company         String?
+  tags            String   @default("[]")      // JSON array
+  customFields    String   @default("{}")      // JSON key-value
+  leadScore       Int      @default(0)
+  source          String?                       // facebook, google, organic, referral, etc.
+  status          String   @default("active")   // active | inactive | archived
+  notes           String?
+  assignedTo      String?                       // userId or agent name
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  opportunities   GhlOpportunity[]
+  tasks           GhlTask[]
+  smsLogs         GhlSmsLog[]
+  callLogs        GhlCallLog[]
+  calendarEvents  GhlCalendarEvent[]
+  payments        GhlPayment[]
+  reviews         GhlReview[]
+}
+
+model GhlPipeline {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stages      GhlPipelineStage[]
+  opportunities GhlOpportunity[]
+}
+
+model GhlPipelineStage {
+  id         String   @id @default(cuid())
+  pipelineId String
+  name       String
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  pipeline   GhlPipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+
+  @@index([pipelineId])
+}
+
+model GhlOpportunity {
+  id          String   @id @default(cuid())
+  pipelineId  String
+  stageId     String?
+  contactId   String?
+  title       String
+  value       Float    @default(0)
+  status      String   @default("open")     // open | won | lost
+  probability Int      @default(50)         // 0-100
+  assignedTo  String?
+  closedAt    DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  pipeline    GhlPipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  contact     GhlContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([pipelineId])
+  @@index([contactId])
+}
+
+model GhlTask {
+  id          String   @id @default(cuid())
+  contactId   String?
+  title       String
+  description String?
+  dueDate     DateTime?
+  priority    String   @default("normal")    // low | normal | high | urgent
+  status      String   @default("pending")   // pending | in_progress | completed | cancelled
+  assignedTo  String?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  contact     GhlContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([contactId])
+  @@index([status])
+}
+
+model GhlCalendarEvent {
+  id          String   @id @default(cuid())
+  contactId   String?
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime?
+  type        String   @default("appointment") // appointment | meeting | reminder | class
+  location    String?
+  status      String   @default("scheduled")    // scheduled | completed | cancelled | no_show
+  calendarId  String?                          // round-robin, team, etc.
+  assignedTo  String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  contact     GhlContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([startTime])
+  @@index([contactId])
+}
+
+model GhlSmsLog {
+  id          String   @id @default(cuid())
+  contactId   String?
+  direction   String   @default("outbound")   // inbound | outbound
+  to          String
+  from        String?
+  body        String
+  status      String   @default("sent")       // sent | delivered | failed
+  ghlMsgId    String?                           // GHL message ID if synced
+  sentAt      DateTime @default(now())
+
+  contact     GhlContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([contactId])
+  @@index([sentAt])
+}
+
+model GhlCallLog {
+  id          String   @id @default(cuid())
+  contactId   String?
+  direction   String   @default("outbound")   // inbound | outbound
+  to          String
+  from        String?
+  duration    Int      @default(0)            // seconds
+  status      String   @default("completed")   // completed | missed | voicemail | no_answer
+  recordingUrl String?
+  notes       String?
+  calledAt    DateTime @default(now())
+
+  contact     GhlContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([contactId])
+  @@index([calledAt])
+}
+
+model GhlPayment {
+  id            String   @id @default(cuid())
+  contactId     String?
+  invoiceId     String?
+  amount        Float
+  currency      String   @default("USD")
+  method        String?                      // stripe | paypal | cash | check
+  status        String   @default("pending") // pending | completed | failed | refunded
+  transactionId String?                     // Stripe/payment processor ID
+  subscriptionId String?
+  planName      String?                     // e.g. "monthly maintenance"
+  paidAt        DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  contact       GhlContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([contactId])
+  @@index([status])
+}
+
+model GhlInvoice {
+  id            String   @id @default(cuid())
+  contactId     String?
+  invoiceNumber String   @unique
+  items         String   @default("[]")      // JSON: [{description, qty, rate, total}]
+  subtotal      Float    @default(0)
+  tax           Float    @default(0)
+  total         Float    @default(0)
+  status        String   @default("draft")    // draft | sent | paid | overdue | cancelled
+  dueDate       DateTime?
+  paidAt        DateTime?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([contactId])
+  @@index([status])
+}
+
+model GhlReview {
+  id           String   @id @default(cuid())
+  contactId    String?
+  platform     String                       // google | facebook | yelp | bbb
+  rating       Int                           // 1-5
+  reviewText   String?
+  reviewerName String?
+  reviewerUrl  String?
+  status       String   @default("new")      // new | responded | flagged
+  responseText String?
+  respondedAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  contact      GhlContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([platform])
+  @@index([contactId])
+}
+
+model GhlAutomation {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  trigger     String                       // form_submitted | appointment_booked | tag_added | etc.
+  actions     String   @default("[]")      // JSON: [{type, config}]
+  conditions  String   @default("[]")      // JSON: [{field, operator, value}]
+  status      String   @default("active")  // active | paused | draft
+  runCount    Int      @default(0)
+  lastRunAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model GhlForm {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  fields      String   @default("[]")      // JSON: [{label, type, required, options}]
+  type        String   @default("contact")  // contact | quote | survey | intake
+  status      String   @default("active")  // active | archived
+  submissions String   @default("0")       // count
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model GhlWebhook {
+  id          String   @id @default(cuid())
+  name        String
+  url         String
+  events      String   @default("[]")      // JSON: ["contact.created","appointment.booked",...]
+  secret      String?
+  status      String   @default("active")  // active | paused
+  lastTrigger DateTime?
+  hitCount    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model BusinessProfile {
+  id             String   @id @default(cuid())
+  businessName   String   @default("Right Hand Services")
+  city           String   @default("Troy")
+  state          String   @default("NC")
+  serviceArea    String   @default("Troy, NC and surrounding areas")
+  services       String   @default("[]")
+  targetKeywords String   @default("[]")
+  websiteUrl     String?
+  phone          String?
+  updatedAt      DateTime @updatedAt
+}
+
+// ── Micro-Niche App Builder ──────────────────────────────────
+model MicroApp {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  prompt      String                     // original user prompt
+  niche       String?                    // e.g. "fitness", "content-planner"
+  pricing     Float   @default(29.99)    // monthly subscription price
+  status      String   @default("draft") // draft | generating | ready | deployed | archived
+  pages       String  @default("[]")     // JSON: [{path, title, componentCode}]
+  config      String  @default("{}")     // JSON: theme colors, fonts, branding
+  authorId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  author      User     @relation(fields: [authorId], references: [id])
+
+  deployments Deployment[]
+  subscribers Subscriber[]
+}
+
+model Deployment {
+  id        String   @id @default(cuid())
+  appId     String
+  platform String   @default("vercel")  // vercel | base44 | netlify | custom
+  url       String?                        // deployed URL
+  status    String   @default("pending")  // pending | live | failed
+  deployedAt DateTime?
+  createdAt DateTime @default(now())
+  app       MicroApp  @relation(fields: [appId], references: [id], onDelete: Cascade)
+}
+
+model Subscriber {
+  id        String   @id @default(cuid())
+  appId     String
+  email     String
+  name      String?
+  status    String   @default("active") // active | cancelled | past_due
+  createdAt DateTime @default(now())
+  app       MicroApp  @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@unique([appId, email])
+}
+
+// ── Content Engine ────────────────────────────────────────────
+model ContentTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  type      String   // hook | script | caption | landing_page | email
+  category  String?  // problem | result | mistake | curiosity | sales
+  platform  String?  // tiktok | instagram | youtube | generic
+  template  String   // the prompt/template text
+  variables String  @default("[]") // e.g. ["niche","audience","price"]
+  authorId  String
+  createdAt DateTime @default(now())
+  author    User     @relation(fields: [authorId], references: [id])
+}
