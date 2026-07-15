@@ -55,8 +55,8 @@ export async function POST(req: NextRequest) {
         niche: generated.niche,
         pricing: generated.pricing,
         status: "ready",
-        pages: generated.pages,
-        config: generated.config,
+        pages: JSON.stringify(generated.pages),
+        config: JSON.stringify(generated.config),
         authorId,
       },
     });
