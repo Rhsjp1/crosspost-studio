@@ -19,8 +19,14 @@ import { NextRequest, NextResponse } from "next/server";
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
-const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+// Model fallback chain — newest stable first. New AI Studio projects get 404
+// on any model marked "no longer available to new users" (2.0/2.5 flash family),
+// so we try the current stable Gemini 3.x models first, then 2.5 flash-lite.
+const GEMINI_MODELS = process.env.GEMINI_MODEL
+  ? [process.env.GEMINI_MODEL]
+  : ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite"];
+const GEMINI_ENDPOINT = (model: string) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -125,28 +131,49 @@ Return ONLY a valid JSON object with this exact structure and no extra text:
       throw new Error("GEMINI_API_KEY is not set");
     }
 
-    const response = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": GEMINI_API_KEY,
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 500,
-          responseMimeType: "application/json",
-        },
-      }),
-    });
+    let data: any = null;
+    let lastError: Error | null = null;
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Gemini API returned ${response.status}: ${errText}`);
+    for (const model of GEMINI_MODELS) {
+      try {
+        const response = await fetch(`${GEMINI_ENDPOINT(model)}?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": GEMINI_API_KEY,
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens: 500,
+              responseMimeType: "application/json",
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          // 404 = model unavailable to this project; try next model
+          // 429 = rate limit; try next model (may have separate quota)
+          if (response.status === 404 || response.status === 429) {
+            lastError = new Error(`Gemini ${model} returned ${response.status}`);
+            continue;
+          }
+          throw new Error(`Gemini API returned ${response.status}: ${errText}`);
+        }
+
+        data = await response.json();
+        break; // success
+      } catch (modelErr) {
+        lastError = modelErr as Error;
+        continue;
+      }
     }
 
-    const data = await response.json();
+    if (!data) {
+      throw lastError || new Error("All Gemini models failed");
+    }
     let content: string =
       data.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text).join("") ?? "";
 
