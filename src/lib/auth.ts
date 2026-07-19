@@ -84,5 +84,6 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/",
   },
-  secret: process.env.NEXTAUTH_SECRET || "crosspost-studio-dev-secret-change-me",
+  secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "crosspost-studio-dev-secret-change-me",
+  // AUTH_TRUST_HOST=true in .env handles cross-origin auth for Vercel previews
 };
