@@ -57,24 +57,109 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 200, headers: CORS_HEADERS });
 }
 
-/** Normalize Gemini's JSON output into our ScoredLead shape */
+/** Suggestion presets for common RHS lead types — used as a hint for Gemini
+ *  and as a fallback when the heuristic runs without AI. */
+function suggestSegment(lead: LeadInput): string | null {
+  const role = (lead.role || "").toLowerCase();
+  const notes = (lead.notes || "").toLowerCase();
+  const addr = (lead.property_address || "").toLowerCase();
+
+  // NC homeowner with drainage/flooding notes
+  if (
+    (role.includes("owner") || role.includes("homeowner")) &&
+    /flood|drainage|erosion|standing water|wet yard|swale/i.test(notes)
+  ) {
+    return "Property Owner - High Drainage Risk";
+  }
+
+  // Local business — multi-property / parking lot / campus
+  if (
+    (role.includes("business") || role.includes("manager") || role.includes("hoa")) &&
+    /parking|campus|complex|multi|commercial|hoa|tenant/i.test(notes)
+  ) {
+    return "Local Business - Multi-Property Maintenance";
+  }
+
+  // Investor or realtor with multiple addresses / transaction context
+  if (
+    (role.includes("investor") || role.includes("realtor") || role.includes("agent") || role.includes("broker")) &&
+    /portfolio|multiple|buy|sell|listing|transaction|invest/i.test(notes)
+  ) {
+    return "Portfolio - Transaction Intelligence";
+  }
+
+  return null;
+}
+
+/** Tier playbooks — explicit next-action and pipeline stage per tier.
+ *  This is the operational layer: when you open Supabase, you instantly
+ *  know what to do with each record. */
+function tierPlaybook(tier: string, segment: string): { pipeline_stage: string; next_action: string; internal_notes_template: string } {
+  switch (tier) {
+    case "A":
+      return {
+        pipeline_stage: "hot",
+        next_action:
+          segment.includes("Drainage") || segment.includes("Flood")
+            ? "Call within 24 hours — offer on-site drainage assessment visit"
+            : "Call within 24 hours — offer free property consultation",
+        internal_notes_template: `HOT lead. AI score {score}/100 (tier A). Segment: ${segment}. Immediate outreach required.`,
+      };
+    case "B":
+      return {
+        pipeline_stage: "warm",
+        next_action:
+          segment.includes("Business") || segment.includes("Multi")
+            ? "Send tailored maintenance package email, call in 48-72 hours"
+            : segment.includes("Portfolio") || segment.includes("Realtor") || segment.includes("Transaction")
+              ? "Send ROI/investment analysis email, call in 48-72 hours"
+              : "Send tailored follow-up email with service info, call in 48-72 hours",
+        internal_notes_template: `WARM lead. AI score {score}/100 (tier B). Segment: ${segment}. Needs nurturing + follow-up.`,
+      };
+    default:
+      return {
+        pipeline_stage: "nurture",
+        next_action:
+          "Add to educational email sequence (drainage tips, NC storm prep, maintenance guides); request more property details",
+        internal_notes_template: `NURTURE lead. AI score {score}/100 (tier C). Segment: ${segment}. Low urgency — educate and re-engage.`,
+      };
+  }
+}
+
+/** Normalize Gemini's JSON output into our ScoredLead shape, enriched
+ *  with tier playbooks and segment presets. */
 function normalizeScoredLead(parsed: any, lead: LeadInput): ScoredLead {
   const tier = ["A", "B", "C"].includes(parsed.tier) ? parsed.tier : "C";
   const score = Math.max(0, Math.min(100, Math.round(parsed.score ?? 0)));
-  const segment = parsed.segment || `${lead.role} – Lead`;
+
+  // Use Gemini's segment if it provided one, otherwise fall back to preset heuristic
+  let segment = parsed.segment || "";
+  if (!segment || segment.length < 5) {
+    segment = suggestSegment(lead) || `${lead.role} – Lead`;
+  }
+
+  // Tier-aware message: prefer Gemini's custom message, but ensure it matches
+  // the tier's urgency level. If Gemini's message is missing, use tier presets.
   const message =
-    parsed.message || "Thank you for reaching out! We'll be in touch within 48 hours.";
-
-  const pipeline_stage = "new";
-  const next_action =
-    tier === "A"
-      ? "Priority: Schedule consultation call within 24 hours"
+    parsed.message ||
+    (tier === "A"
+      ? "We'll review your property and reach out within 24 hours with next steps."
       : tier === "B"
-        ? "Send follow-up email with service info, schedule call within 48 hours"
-        : "Add to nurture sequence, request more details";
-  const internal_notes = `Gemini score ${score}/100 (tier ${tier}). Segment: ${segment}`;
+        ? "We'll review your details and follow up within 1-2 days with recommendations."
+        : "Thanks for reaching out — please share a bit more about your property so we can better understand your situation.");
 
-  return { tier, score, segment, pipeline_stage, next_action, internal_notes, message };
+  const playbook = tierPlaybook(tier, segment);
+  const internal_notes = playbook.internal_notes_template.replace("{score}", String(score));
+
+  return {
+    tier,
+    score,
+    segment,
+    pipeline_stage: playbook.pipeline_stage,
+    next_action: playbook.next_action,
+    internal_notes,
+    message,
+  };
 }
 
 async function scoreLeadWithGemini(lead: LeadInput): Promise<ScoredLead> {
@@ -241,18 +326,22 @@ Return ONLY a valid JSON object with this exact structure and no extra text:
     score = Math.min(score, 100);
 
     const tier = score >= 80 ? "A" : score >= 60 ? "B" : "C";
+    const segment = suggestSegment(lead) || `${lead.role} – ${isUrgent ? "High Urgency" : "Standard"} / ${hasAddress ? "On-Site" : "Remote"}`;
+    const playbook = tierPlaybook(tier, segment);
 
     return {
       tier,
       score,
-      segment: `${lead.role} – ${isUrgent ? "High Urgency" : "Standard"} / ${hasAddress ? "On-Site" : "Remote"}`,
-      pipeline_stage: "new",
-      next_action: "Schedule initial consultation call",
-      internal_notes: "Gemini AI unavailable; fallback heuristic used",
+      segment,
+      pipeline_stage: playbook.pipeline_stage,
+      next_action: playbook.next_action,
+      internal_notes: `Gemini AI unavailable; fallback heuristic used. ${playbook.internal_notes_template.replace("{score}", String(score))}`,
       message:
         tier === "A"
-          ? "Your request has been prioritized — our team will reach out within 24 hours."
-          : "Thank you for reaching out! We'll be in touch within 48 hours.",
+          ? "We'll review your property and reach out within 24 hours with next steps."
+          : tier === "B"
+            ? "We'll review your details and follow up within 1-2 days with recommendations."
+            : "Thanks for reaching out — please share a bit more about your property so we can better understand your situation.",
     };
   }
 }
