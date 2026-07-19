@@ -57,6 +57,26 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 200, headers: CORS_HEADERS });
 }
 
+/** Normalize Gemini's JSON output into our ScoredLead shape */
+function normalizeScoredLead(parsed: any, lead: LeadInput): ScoredLead {
+  const tier = ["A", "B", "C"].includes(parsed.tier) ? parsed.tier : "C";
+  const score = Math.max(0, Math.min(100, Math.round(parsed.score ?? 0)));
+  const segment = parsed.segment || `${lead.role} – Lead`;
+  const message =
+    parsed.message || "Thank you for reaching out! We'll be in touch within 48 hours.";
+
+  const pipeline_stage = "new";
+  const next_action =
+    tier === "A"
+      ? "Priority: Schedule consultation call within 24 hours"
+      : tier === "B"
+        ? "Send follow-up email with service info, schedule call within 48 hours"
+        : "Add to nurture sequence, request more details";
+  const internal_notes = `Gemini score ${score}/100 (tier ${tier}). Segment: ${segment}`;
+
+  return { tier, score, segment, pipeline_stage, next_action, internal_notes, message };
+}
+
 async function scoreLeadWithGemini(lead: LeadInput): Promise<ScoredLead> {
   const prompt = `
 You are an AI lead scoring assistant for RHS AI Solutions, an AI-powered property and landscape intelligence service in North Carolina.
@@ -147,7 +167,6 @@ Return ONLY a valid JSON object with this exact structure and no extra text:
             generationConfig: {
               temperature: 0.2,
               maxOutputTokens: 2048,
-              responseMimeType: "application/json",
               thinkingConfig: { thinkingBudget: 0 },
             },
           }),
@@ -209,28 +228,22 @@ Return ONLY a valid JSON object with this exact structure and no extra text:
     content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      // Thinking models sometimes truncate the closing brace — try to repair
+      const trimmed = content.trim();
+      if (trimmed.startsWith("{") && !trimmed.endsWith("}")) {
+        const repaired = trimmed + "}";
+        try {
+          const repairedParsed = JSON.parse(repaired);
+          console.log("[rhs-intake] JSON repaired by appending '}'");
+          return normalizeScoredLead(repairedParsed, lead);
+        } catch {
+          // fall through to throw
+        }
+      }
       throw new Error("No JSON found in Gemini response");
     }
-
     const parsed = JSON.parse(jsonMatch[0]);
-
-    // Validate and clamp values
-    const tier = ["A", "B", "C"].includes(parsed.tier) ? parsed.tier : "C";
-    const score = Math.max(0, Math.min(100, Math.round(parsed.score ?? 0)));
-    const segment = parsed.segment || `${lead.role} – Lead`;
-    const message = parsed.message || "Thank you for reaching out! We'll be in touch within 48 hours.";
-
-    // Derive pipeline fields from tier (Gemini prompt doesn't return these)
-    const pipeline_stage = "new";
-    const next_action =
-      tier === "A"
-        ? "Priority: Schedule consultation call within 24 hours"
-        : tier === "B"
-          ? "Send follow-up email with service info, schedule call within 48 hours"
-          : "Add to nurture sequence, request more details";
-    const internal_notes = `Gemini score ${score}/100 (tier ${tier}). Segment: ${segment}`;
-
-    return { tier, score, segment, pipeline_stage, next_action, internal_notes, message };
+    return normalizeScoredLead(parsed, lead);
   } catch (err) {
     console.error("Gemini scoring failed, using fallback:", err);
 
