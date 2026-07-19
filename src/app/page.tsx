@@ -75,6 +75,14 @@ const SettingsSection = dynamic(
   () => import("@/components/sections/SettingsSection"),
   { loading: () => <SectionLoading /> }
 );
+const OsDashboardSection = dynamic(
+  () => import("@/components/sections/OsDashboardSection"),
+  { loading: () => <SectionLoading /> }
+);
+const HermesConfigSection = dynamic(
+  () => import("@/components/sections/HermesConfigSection"),
+  { loading: () => <SectionLoading /> }
+);
 
 /* ------------------------------------------------------------------ */
 /*  Nav items                                                          */
@@ -93,6 +101,8 @@ const navItems = [
   { id: "content-engine", label: "Content Engine", icon: ContentEngineIcon },
   { id: "lark", label: "Lark Workspace", icon: LarkIcon },
   { id: "ghl", label: "GoHighLevel", icon: GhlIcon },
+  { id: "os-dashboard", label: "OS Dashboard", icon: OsDashboardIcon },
+  { id: "hermes-config", label: "Hermes Config", icon: HermesConfigIcon },
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
@@ -221,6 +231,22 @@ function GhlIcon() {
   );
 }
 
+function OsDashboardIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+    </svg>
+  );
+}
+
+function HermesConfigIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 3v2m6-2v2M9 15v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+    </svg>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  Section router                                                     */
 /* ------------------------------------------------------------------ */
@@ -238,6 +264,8 @@ const SECTIONS: Record<string, React.ComponentType> = {
   "content-engine": ContentEngineSection,
   lark: LarkWorkspaceSection,
   ghl: GhlSection,
+  "os-dashboard": OsDashboardSection,
+  "hermes-config": HermesConfigSection,
   settings: SettingsSection,
 };
 

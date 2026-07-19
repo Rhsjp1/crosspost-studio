@@ -125,11 +125,10 @@ Return ONLY a valid JSON object with this exact structure and no extra text:
       throw new Error("GEMINI_API_KEY is not set");
     }
 
-    const response = await fetch(GEMINI_ENDPOINT, {
+    const response = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${GEMINI_API_KEY}`,
         "x-goog-api-key": GEMINI_API_KEY,
       },
       body: JSON.stringify({
