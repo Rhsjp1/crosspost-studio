@@ -146,8 +146,9 @@ Return ONLY a valid JSON object with this exact structure and no extra text:
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
               temperature: 0.2,
-              maxOutputTokens: 500,
+              maxOutputTokens: 2048,
               responseMimeType: "application/json",
+              thinkingConfig: { thinkingBudget: 0 },
             },
           }),
         });
@@ -177,17 +178,19 @@ Return ONLY a valid JSON object with this exact structure and no extra text:
       throw lastError || new Error("All Gemini models failed");
     }
 
-    // Gemini response shape: data.candidates[0].content.parts[].text
-    // Some models may also return data.text (older format) or data.candidates[0].output
+    // Gemini 3.x thinking models return multiple parts — some are "thought"
+    // parts with thoughtSignature (no text), some are the actual output.
+    // Filter to parts that have a non-empty text field and concatenate.
     let content: string =
-      data.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text).join("") ??
+      data.candidates?.[0]?.content?.parts
+        ?.filter((p: { text?: string }) => typeof p.text === "string" && p.text.length > 0)
+        .map((p: { text?: string }) => p.text)
+        .join("") ??
       data.text ??
       data.candidates?.[0]?.output ??
       "";
 
-    // If responseMimeType: application/json didn't work, the model may have
-    // returned the JSON inside a code fence or with surrounding text.
-    console.log(`[rhs-intake] Raw content to parse:`, content.slice(0, 300));
+    console.log(`[rhs-intake] Raw content to parse (len=${content.length}):`, content.slice(0, 400));
 
     // Strip markdown code fences if present (```json ... ```)
     content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
