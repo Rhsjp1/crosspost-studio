@@ -184,10 +184,8 @@ Return ONLY a valid JSON object with this exact structure and no extra text:
         }
 
         data = await response.json();
-        console.log(`[rhs-intake] Gemini ${model} responded:`, JSON.stringify(data).slice(0, 500));
         break; // success
       } catch (modelErr) {
-        console.log(`[rhs-intake] Gemini ${model} failed:`, (modelErr as Error).message);
         lastError = modelErr as Error;
         continue;
       }
@@ -197,32 +195,16 @@ Return ONLY a valid JSON object with this exact structure and no extra text:
       throw lastError || new Error("All Gemini models failed");
     }
 
-    // Log structure for debugging
-    const candidate = data.candidates?.[0];
-    console.log(
-      `[rhs-intake] finishReason=${candidate?.finishReason}, parts count=${candidate?.content?.parts?.length}`
-    );
-    if (candidate?.content?.parts) {
-      candidate.content.parts.forEach((p: object, i: number) => {
-        const keys = Object.keys(p);
-        const textLen = (p as { text?: string }).text?.length ?? 0;
-        console.log(`[rhs-intake] part[${i}] keys=${keys.join(",")} textLen=${textLen}`);
-      });
-    }
-
-    // Gemini 3.x thinking models return multiple parts — some are "thought"
-    // parts with thoughtSignature (no text), some are the actual output.
+    // Gemini 3.x thinking models return parts with thoughtSignature (no text).
     // Filter to parts that have a non-empty text field and concatenate.
     let content: string =
-      candidate?.content?.parts
+      data.candidates?.[0]?.content?.parts
         ?.filter((p: { text?: string }) => typeof p.text === "string" && p.text.length > 0)
         .map((p: { text?: string }) => p.text)
         .join("") ??
       data.text ??
-      candidate?.output ??
+      data.candidates?.[0]?.output ??
       "";
-
-    console.log(`[rhs-intake] Raw content to parse (len=${content.length}):`, content.slice(0, 600));
 
     // Strip markdown code fences if present (```json ... ```)
     content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
