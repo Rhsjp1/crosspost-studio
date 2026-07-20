@@ -141,24 +141,23 @@ function ContentEngineSection() {
     if (accounts.length === 0) return;
     setIsAnalyzing(true);
     setFrameworkAnalysis("");
-    // Mock analysis — will be replaced with real API
-    await new Promise((r) => setTimeout(r, 2000));
-    const analysis = `5×5 Framework Analysis — ${accounts.length} Competitor Accounts Analyzed
-
-**Top Performing Hook Patterns:**
-1. Problem-agitation hooks (${Math.floor(Math.random() * 30 + 20)}% engagement)
-2. Before/after transformation hooks (${Math.floor(Math.random() * 25 + 15)}% engagement)
-3. Contrarian opinion hooks (${Math.floor(Math.random() * 20 + 10)}% engagement)
-4. Listicle/value hooks (${Math.floor(Math.random() * 15 + 10)}% engagement)
-5. Story/narrative hooks (${Math.floor(Math.random() * 15 + 8)}% engagement)
-
-**Common Content Themes:**
-- ${accounts.map((a) => `@${a}`).join(", ")} frequently post about industry tips, behind-the-scenes content, and client success stories.
-
-**Posting Frequency Avg:** 3-5 posts/week across analyzed accounts
-
-**Recommended Strategy:** Focus on problem-solution content with strong hooks. Use curiosity-driven openings and pair with actionable tips. Post consistently 4x/week for optimal reach.`;
-    setFrameworkAnalysis(analysis);
+    try {
+      const res = await fetch("/api/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: `Analyze these competitor social media accounts: ${accounts.join(", ")}. Provide a 5x5 framework analysis covering: top performing hook patterns with engagement percentages, common content themes, posting frequency, and recommended content strategy. Format as clean markdown.`,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFrameworkAnalysis(data.content || data.text || "Analysis unavailable.");
+      } else {
+        setFrameworkAnalysis("Analysis failed. Check AI configuration in Settings.");
+      }
+    } catch {
+      setFrameworkAnalysis("Analysis failed. Check AI configuration in Settings.");
+    }
     setIsAnalyzing(false);
   }, [competitorAccounts]);
 

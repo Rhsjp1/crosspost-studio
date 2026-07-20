@@ -25,9 +25,21 @@ const NICHE_KEYWORDS: Record<string, string[]> = {
   landscaping: ["landscaping", "lawn", "garden", "yard", "outdoor", "mowing", "tree"],
   therapy: ["therapy", "counseling", "mental health", "psychologist", "wellness", "mindfulness"],
   finance: ["finance", "accounting", "tax", "bookkeeping", "wealth", "financial", "cpa"],
+  healthcare: ["healthcare", "medical", "clinic", "doctor", "hospital", "patient", "telehealth"],
+  construction: ["construction", "contractor", "building", "renovation", "remodeling", "builder"],
+  insurance: ["insurance", "coverage", "policy", "claims", "broker"],
+  hospitality: ["hotel", "motel", "resort", "lodging", "hospitality", "booking"],
+  nonprofit: ["nonprofit", "charity", "foundation", "donation", "fundraiser"],
+  agriculture: ["farm", "agriculture", "crop", "livestock", "ranch", "harvest"],
+  technology: ["technology", "tech", "startup", "ai", "software", "devops", "cybersecurity"],
+  hvac: ["hvac", "heating", "cooling", "air conditioning", "furnace", "ventilation"],
+  roofing: ["roofing", "roof", "shingles", "gutter", "leak"],
+  plumbing: ["plumbing", "plumber", "pipe", "drain", "water heater"],
+  electrical: ["electrical", "electrician", "wiring", "outlet", "panel", "lighting"],
+  pest_control: ["pest", "pest control", "exterminator", "bug", "termite", "rodent"],
+  pool: ["pool", "pool service", "swimming pool", "spa maintenance", "pool cleaning"],
+  property_mgmt: ["property management", "hoa", "landlord", "rental", "tenant", "lease"],
 };
-
-// ── Brand color palettes per niche ─────────────────────────────
 const BRAND_PALETTES: Record<string, { primary: string; secondary: string; accent: string; bg: string }> = {
   default:       { primary: "#2563EB", secondary: "#1E40AF", accent: "#3B82F6", bg: "#F8FAFC" },
   fitness:       { primary: "#EF4444", secondary: "#B91C1C", accent: "#F97316", bg: "#FFF7ED" },
@@ -48,6 +60,20 @@ const BRAND_PALETTES: Record<string, { primary: string; secondary: string; accen
   landscaping:   { primary: "#16A34A", secondary: "#166534", accent: "#4ADE80", bg: "#F0FDF4" },
   therapy:       { primary: "#A855F7", secondary: "#7E22CE", accent: "#C084FC", bg: "#FAF5FF" },
   finance:       { primary: "#059669", secondary: "#065F46", accent: "#34D399", bg: "#ECFDF5" },
+  healthcare:   { primary: "#0EA5E9", secondary: "#0284C7", accent: "#38BDF8", bg: "#F0F9FF" },
+  construction:  { primary: "#D97706", secondary: "#B45309", accent: "#FBBF24", bg: "#FFFBEB" },
+  insurance:     { primary: "#4338CA", secondary: "#3730A3", accent: "#6366F1", bg: "#EEF2FF" },
+  hospitality:   { primary: "#DB2777", secondary: "#9D174D", accent: "#F472B6", bg: "#FDF2F8" },
+  nonprofit:     { primary: "#059669", secondary: "#047857", accent: "#10B981", bg: "#ECFDF5" },
+  agriculture:   { primary: "#65A30D", secondary: "#4D7C0F", accent: "#84CC16", bg: "#F7FEE7" },
+  technology:    { primary: "#6366F1", secondary: "#4338CA", accent: "#818CF8", bg: "#EEF2FF" },
+  hvac:          { primary: "#0891B2", secondary: "#155E75", accent: "#06B6D4", bg: "#ECFEFF" },
+  roofing:       { primary: "#7C2D12", secondary: "#5C1A0E", accent: "#EA580C", bg: "#FFF7ED" },
+  plumbing:      { primary: "#2563EB", secondary: "#1E40AF", accent: "#3B82F6", bg: "#EFF6FF" },
+  electrical:    { primary: "#CA8A04", secondary: "#854D0E", accent: "#EAB308", bg: "#FEFCE8" },
+  pest_control:  { primary: "#84CC16", secondary: "#4D7C0F", accent: "#A3E635", bg: "#F7FEE7" },
+  pool:          { primary: "#0891B2", secondary: "#155E75", accent: "#22D3EE", bg: "#ECFEFF" },
+  property_mgmt: { primary: "#475569", secondary: "#334155", accent: "#64748B", bg: "#F8FAFC" },
 };
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -91,6 +117,13 @@ function nicheDescriptor(niche: string): string {
     dental: "your dental practice", auto: "your auto shop", pet: "your pet business",
     cleaning: "your cleaning service", landscaping: "your landscaping business",
     therapy: "your therapy practice", finance: "your financial services",
+    healthcare: "your medical practice", construction: "your construction business",
+    insurance: "your insurance agency", hospitality: "your hotel",
+    nonprofit: "your nonprofit", agriculture: "your farm",
+    technology: "your tech startup", hvac: "your HVAC business",
+    roofing: "your roofing company", plumbing: "your plumbing business",
+    electrical: "your electrical business", pest_control: "your pest control service",
+    pool: "your pool service", property_mgmt: "your property management company",
   };
   return map[niche] ?? "your business";
 }
@@ -104,6 +137,13 @@ function nicheAction(niche: string): string {
     dental: "Book Visit", auto: "Schedule Service", pet: "Book Grooming",
     cleaning: "Get a Quote", landscaping: "Request Estimate",
     therapy: "Book Session", finance: "Get in Touch",
+    healthcare: "Book Appointment", construction: "Request Quote",
+    insurance: "Get a Quote", hospitality: "Book Now",
+    nonprofit: "Donate Now", agriculture: "Get Started",
+    technology: "Try Free", hvac: "Schedule Service",
+    roofing: "Get Estimate", plumbing: "Call Now",
+    electrical: "Schedule Service", pest_control: "Book Treatment",
+    pool: "Schedule Service", property_mgmt: "Get Started",
   };
   return map[niche] ?? "Get Started";
 }
