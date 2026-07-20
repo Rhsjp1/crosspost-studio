@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useSession, signIn, signOut } from "next-auth/react";
 import dynamic from "next/dynamic";
 import { create } from "zustand";
 import SectionLoading from "@/components/dashboard/SectionLoading";
@@ -269,7 +270,100 @@ const SECTIONS: Record<string, React.ComponentType> = {
   settings: SettingsSection,
 };
 
+/* ------------------------------------------------------------------ */
+/*  Login Form                                                          */
+/* ------------------------------------------------------------------ */
+
+function LoginForm() {
+  const [email, setEmail] = useState("admin@local");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    const res = await signIn("credentials", {
+      email,
+      password,
+      redirect: false,
+    });
+
+    setLoading(false);
+
+    if (res?.error) {
+      setError("Invalid email or password");
+    }
+    // If success, useSession will trigger re-render automatically
+  };
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-900 px-4">
+      <div className="w-full max-w-md">
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-bold text-blue-400">Crosspost Studio</h1>
+          <p className="mt-2 text-sm text-gray-500">Sign in to your dashboard</p>
+        </div>
+
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-4 rounded-lg border border-gray-700 bg-gray-800 p-6 shadow-xl"
+        >
+          {error && (
+            <div className="rounded border border-red-500 bg-red-500/10 px-4 py-2 text-sm text-red-400">
+              {error}
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-300">
+              Email
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+              placeholder="admin@local"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-300">
+              Password
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+              placeholder="••••••••"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? "Signing in..." : "Sign In"}
+          </button>
+
+          <p className="text-center text-xs text-gray-600">
+            Default: admin@local / admin12345678
+          </p>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
+  const { data: session, status } = useSession();
   const { activeSection, setActiveSection } = useStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -280,6 +374,20 @@ export default function HomePage() {
     },
     [setActiveSection]
   );
+
+  // Show loading while session is being checked
+  if (status === "loading") {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-900">
+        <div className="text-gray-400">Loading...</div>
+      </div>
+    );
+  }
+
+  // Show login form if not authenticated
+  if (status === "unauthenticated" || !session) {
+    return <LoginForm />;
+  }
 
   const ActiveSectionComponent = SECTIONS[activeSection] || DashboardSection;
 
@@ -334,6 +442,19 @@ export default function HomePage() {
 
         {/* Footer */}
         <div className="border-t border-gray-700 p-4">
+          {session?.user && (
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs text-gray-400">
+                {session.user.email}
+              </span>
+              <button
+                onClick={() => signOut({ callbackUrl: "/" })}
+                className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-700 hover:text-white"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
           <p className="text-xs text-gray-500">Crosspost Studio v1.0</p>
         </div>
       </aside>
