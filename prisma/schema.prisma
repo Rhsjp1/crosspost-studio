@@ -1,11 +1,13 @@
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
+  schemas   = ["public"]
 }
 
 model User {
@@ -25,6 +27,7 @@ model User {
   auditRuns     AuditRun[]
   microApps     MicroApp[]
   contentTemplates ContentTemplate[]
+  @@schema("public")
 }
 
 model Account {
@@ -43,6 +46,7 @@ model Account {
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@schema("public")
 }
 
 model Session {
@@ -51,6 +55,7 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@schema("public")
 }
 
 model VerificationToken {
@@ -59,6 +64,7 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+  @@schema("public")
 }
 
 model Content {
@@ -81,6 +87,7 @@ model Content {
   author          User     @relation(fields: [authorId], references: [id])
   comments        Comment[]
   scheduledPosts  ScheduledPost[]
+  @@schema("public")
 }
 
 model Comment {
@@ -94,6 +101,7 @@ model Comment {
   content   Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
 
   @@index([contentId])
+  @@schema("public")
 }
 
 model ScheduledPost {
@@ -111,6 +119,7 @@ model ScheduledPost {
 
   @@index([scheduledFor])
   @@index([status])
+  @@schema("public")
 }
 
 model HistoryEvent {
@@ -123,6 +132,7 @@ model HistoryEvent {
   createdAt   DateTime @default(now())
 
   @@index([createdAt])
+  @@schema("public")
 }
 
 model AuditRun {
@@ -135,6 +145,7 @@ model AuditRun {
   userId      String
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id])
+  @@schema("public")
 }
 
 model Connection {
@@ -150,12 +161,14 @@ model Connection {
   userId        String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  @@schema("public")
 }
 
 model AppSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+  @@schema("public")
 }
 
 model GhlSync {
@@ -166,6 +179,7 @@ model GhlSync {
   pipeline    String?
   status      String   @default("pending")
   createdAt   DateTime @default(now())
+  @@schema("public")
 }
 
 // ── GoHighLevel Business OS ───────────────────────────────────
@@ -195,6 +209,7 @@ model GhlContact {
   calendarEvents  GhlCalendarEvent[]
   payments        GhlPayment[]
   reviews         GhlReview[]
+  @@schema("public")
 }
 
 model GhlPipeline {
@@ -207,6 +222,7 @@ model GhlPipeline {
 
   stages      GhlPipelineStage[]
   opportunities GhlOpportunity[]
+  @@schema("public")
 }
 
 model GhlPipelineStage {
@@ -219,6 +235,7 @@ model GhlPipelineStage {
   pipeline   GhlPipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
 
   @@index([pipelineId])
+  @@schema("public")
 }
 
 model GhlOpportunity {
@@ -240,6 +257,7 @@ model GhlOpportunity {
 
   @@index([pipelineId])
   @@index([contactId])
+  @@schema("public")
 }
 
 model GhlTask {
@@ -259,6 +277,7 @@ model GhlTask {
 
   @@index([contactId])
   @@index([status])
+  @@schema("public")
 }
 
 model GhlCalendarEvent {
@@ -281,6 +300,7 @@ model GhlCalendarEvent {
 
   @@index([startTime])
   @@index([contactId])
+  @@schema("public")
 }
 
 model GhlSmsLog {
@@ -298,6 +318,7 @@ model GhlSmsLog {
 
   @@index([contactId])
   @@index([sentAt])
+  @@schema("public")
 }
 
 model GhlCallLog {
@@ -316,6 +337,7 @@ model GhlCallLog {
 
   @@index([contactId])
   @@index([calledAt])
+  @@schema("public")
 }
 
 model GhlPayment {
@@ -337,6 +359,7 @@ model GhlPayment {
 
   @@index([contactId])
   @@index([status])
+  @@schema("public")
 }
 
 model GhlInvoice {
@@ -356,6 +379,7 @@ model GhlInvoice {
 
   @@index([contactId])
   @@index([status])
+  @@schema("public")
 }
 
 model GhlReview {
@@ -375,6 +399,7 @@ model GhlReview {
 
   @@index([platform])
   @@index([contactId])
+  @@schema("public")
 }
 
 model GhlAutomation {
@@ -389,6 +414,7 @@ model GhlAutomation {
   lastRunAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  @@schema("public")
 }
 
 model GhlForm {
@@ -401,6 +427,7 @@ model GhlForm {
   submissions String   @default("0")       // count
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  @@schema("public")
 }
 
 model GhlWebhook {
@@ -414,6 +441,7 @@ model GhlWebhook {
   hitCount    Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  @@schema("public")
 }
 
 model BusinessProfile {
@@ -427,6 +455,7 @@ model BusinessProfile {
   websiteUrl     String?
   phone          String?
   updatedAt      DateTime @updatedAt
+  @@schema("public")
 }
 
 // ── Micro-Niche App Builder ──────────────────────────────────
@@ -447,6 +476,7 @@ model MicroApp {
 
   deployments Deployment[]
   subscribers Subscriber[]
+  @@schema("public")
 }
 
 model Deployment {
@@ -458,6 +488,7 @@ model Deployment {
   deployedAt DateTime?
   createdAt DateTime @default(now())
   app       MicroApp  @relation(fields: [appId], references: [id], onDelete: Cascade)
+  @@schema("public")
 }
 
 model Subscriber {
@@ -470,6 +501,7 @@ model Subscriber {
   app       MicroApp  @relation(fields: [appId], references: [id], onDelete: Cascade)
 
   @@unique([appId, email])
+  @@schema("public")
 }
 
 // ── Content Engine ────────────────────────────────────────────
@@ -484,4 +516,5 @@ model ContentTemplate {
   authorId  String
   createdAt DateTime @default(now())
   author    User     @relation(fields: [authorId], references: [id])
+  @@schema("public")
 }

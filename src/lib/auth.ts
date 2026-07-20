@@ -16,6 +16,7 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        try {
         // Auto-create admin user if none exist
         const userCount = await db.user.count();
         if (userCount === 0) {
@@ -59,6 +60,10 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           role: user.role,
         };
+        } catch (error) {
+          console.error("[AUTH] Database error during login:", error);
+          return null;
+        }
       },
     }),
   ],
