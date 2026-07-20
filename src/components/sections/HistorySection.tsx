@@ -4,10 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 
 
 export default function HistorySection() {
-  const { data: events = [], isLoading } = useQuery({
+  const { data: eventsRes, isLoading } = useQuery({
     queryKey: ["history"],
     queryFn: () => fetch("/api/history").then((r) => r.json()),
   });
+  const events = Array.isArray(eventsRes) ? eventsRes : eventsRes?.data ?? [];
 
   return (
     <div className="space-y-6">

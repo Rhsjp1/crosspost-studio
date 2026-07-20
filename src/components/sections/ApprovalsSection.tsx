@@ -3,10 +3,11 @@
 import { useQuery } from "@tanstack/react-query";
 
 export default function ApprovalsSection() {
-  const { data: content = [], isLoading } = useQuery({
+  const { data: contentRes, isLoading } = useQuery({
     queryKey: ["content"],
     queryFn: () => fetch("/api/content").then((r) => r.json()),
   });
+  const content = Array.isArray(contentRes) ? contentRes : contentRes?.data ?? [];
 
   const pendingItems = Array.isArray(content)
     ? content.filter((c: { status: string }) => c.status === "pending_review")

@@ -3,10 +3,11 @@
 import { useQuery } from "@tanstack/react-query";
 
 export default function SchedulerSection() {
-  const { data: scheduled = [], isLoading } = useQuery({
+  const { data: response, isLoading } = useQuery({
     queryKey: ["scheduled"],
     queryFn: () => fetch("/api/scheduled").then((r) => r.json()),
   });
+  const scheduled = Array.isArray(response) ? response : response?.data ?? [];
 
   const byDate: Record<string, typeof scheduled> = {};
   for (const post of scheduled) {

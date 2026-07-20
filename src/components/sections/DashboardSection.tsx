@@ -3,15 +3,17 @@
 import { useQuery } from "@tanstack/react-query";
 
 export default function DashboardSection() {
-  const { data: content = [], isLoading: contentLoading } = useQuery({
+  const { data: contentRes, isLoading: contentLoading } = useQuery({
     queryKey: ["content"],
     queryFn: () => fetch("/api/content").then((r) => r.json()),
   });
+  const content = Array.isArray(contentRes) ? contentRes : contentRes?.data ?? [];
 
-  const { data: scheduled = [], isLoading: scheduledLoading } = useQuery({
+  const { data: scheduledRes, isLoading: scheduledLoading } = useQuery({
     queryKey: ["scheduled"],
     queryFn: () => fetch("/api/scheduled").then((r) => r.json()),
   });
+  const scheduled = Array.isArray(scheduledRes) ? scheduledRes : scheduledRes?.data ?? [];
 
   const { data: connections = [], isLoading: connectionsLoading } = useQuery({
     queryKey: ["connections"],

@@ -28,10 +28,11 @@ function CloseIcon() {
 }
 
 export default function ContentLibrarySection() {
-  const { data: content = [], isLoading } = useQuery({
+  const { data: contentRes, isLoading } = useQuery({
     queryKey: ["content"],
     queryFn: () => fetch("/api/content").then((r) => r.json()),
   });
+  const content = Array.isArray(contentRes) ? contentRes : contentRes?.data ?? [];
 
   const queryClient = useQueryClient();
   const [showBulk, setShowBulk] = useState(false);
