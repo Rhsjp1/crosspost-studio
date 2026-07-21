@@ -142,6 +142,7 @@ model AuditRun {
   result      String
   score       Int
   findings    String   @default("[]")
+  notes       String?
   userId      String
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id])
