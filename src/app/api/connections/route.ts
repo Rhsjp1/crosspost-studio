@@ -93,7 +93,22 @@ export async function POST(req: Request) {
       );
     }
 
-    const authConfigId = authConfigs[0].id;
+    // Filter to configs that actually match the requested toolkit
+    const matching = authConfigs.filter(
+      (c: { toolkit?: string; toolkit_slug?: string }) =>
+        c.toolkit === toolkit || c.toolkit_slug === toolkit
+    );
+
+    if (matching.length === 0) {
+      return NextResponse.json(
+        {
+          error: `No auth config found for "${toolkit}". Composio returned ${authConfigs.length} config(s) but none matched this toolkit. Create one at composio.dev/dashboard first.`,
+        },
+        { status: 404 }
+      );
+    }
+
+    const authConfigId = matching[0].id;
 
     // Step 2: Try connection — multiple endpoint strategies with fallback
 
