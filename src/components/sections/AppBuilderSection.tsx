@@ -175,7 +175,7 @@ function AppBuilderSection() {
                     <span className={`badge ${app.status === "deployed" ? "badge-success" : app.status === "ready" ? "badge-primary" : app.status === "building" ? "badge-warn" : "badge-muted"}`}>
                       {app.status}
                     </span>
-                    <span>${app.pricing.toFixed(2)}/mo</span>
+                    <span>${(app.pricing ?? 0).toFixed(2)}/mo</span>
                     <span>{app.subscribers} subscribers</span>
                   </div>
                 </div>

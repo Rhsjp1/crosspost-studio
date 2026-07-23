@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 function LarkWorkspaceSection() {
   const { data: status, isLoading: statusLoading, refetch } = useQuery({
     queryKey: ["lark-status"],
-    queryFn: () => fetch("/api/lark").then((r) => r.json()),
+    queryFn: () => fetch("/api/lark").then((r) => r.json()).catch(() => ({ output: null, error: "Failed to fetch" })),
     refetchInterval: 30000,
   });
 
@@ -171,7 +171,13 @@ function LarkTabContent({ tab }: { tab: "calendar" | "mail" | "messages" | "docs
     setLoading(true);
     fetch(meta.endpoint)
       .then((r) => r.json())
-      .then(setListData)
+      .then((d) => {
+        if (d && d.error) {
+          setListData({ error: d.notConfigured ? "Lark CLI not configured on server" : d.error });
+        } else {
+          setListData(d || { output: [] });
+        }
+      })
       .catch(() => setListData({ error: "Failed to fetch" }))
       .finally(() => setLoading(false));
   }, [tab, meta.endpoint]);

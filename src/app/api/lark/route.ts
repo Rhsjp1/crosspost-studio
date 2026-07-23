@@ -8,7 +8,10 @@ export async function GET() {
     return NextResponse.json({ output });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 502 });
+    return NextResponse.json(
+      { output: null, error: message, notConfigured: message.includes("not_configured") || message.includes("not configured") },
+      { status: 502 }
+    );
   }
 }
 

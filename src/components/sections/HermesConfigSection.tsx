@@ -71,7 +71,9 @@ function Gauge({
   color: string;
   unit?: string;
 }) {
-  const pct = Math.min(value / max, 1);
+  // Guard against undefined/null value
+  const v = typeof value === "number" && !isNaN(value) ? value : 0;
+  const pct = Math.min(v / max, 1);
   const radius = 40;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - pct * circumference * 0.75;
@@ -122,7 +124,7 @@ function Gauge({
           fontWeight="bold"
           fontFamily="monospace"
         >
-          {value < 0.01 ? value.toFixed(4) : value < 1 ? value.toFixed(3) : value < 1000 ? value.toFixed(2) : (value / 1000).toFixed(1) + "k"}
+          {v < 0.01 ? v.toFixed(4) : v < 1 ? v.toFixed(3) : v < 1000 ? v.toFixed(2) : (v / 1000).toFixed(1) + "k"}
         </text>
         <text
           x={center}
@@ -309,7 +311,7 @@ export default function HermesConfigSection() {
           <Gauge value={liveTokens.cost} max={0.5} label="Session Cost" color="#34d399" unit="USD" />
         </div>
         <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-4">
-          <Gauge value={config.savingsVsGlm51.dailyPct} max={100} label="vs GLM-5.1 Savings" color="#fb923c" unit="%" />
+          <Gauge value={config.savingsVsGlm51?.dailyPct ?? 0} max={100} label="vs GLM-5.1 Savings" color="#fb923c" unit="%" />
         </div>
       </div>
 
@@ -318,7 +320,7 @@ export default function HermesConfigSection() {
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-medium text-gray-300">Cumulative Cost (Live)</h3>
           <span className="text-lg font-bold text-emerald-300 font-mono">
-            ${liveTokens.cost.toFixed(4)}
+            ${(liveTokens.cost || 0).toFixed(4)}
           </span>
         </div>
         <Sparkline data={tokenHistory} color="#34d399" width={600} height={48} />
@@ -346,7 +348,7 @@ export default function HermesConfigSection() {
               <Row label="Temperature" value={String(m.temperature)} />
               <Row label="Top P" value={String(m.topP)} />
               <Row label="Max Tokens" value={String(m.maxTokens)} />
-              <Row label="Context" value={(m.contextLength / 1024).toFixed(0) + "K"} />
+              <Row label="Context" value={((m.contextLength ?? 0) / 1024).toFixed(0) + "K"} />
               <Row label="Streaming" value={m.streaming ? "ON" : "OFF"} />
             </div>
           </div>
@@ -355,16 +357,16 @@ export default function HermesConfigSection() {
           <div className="rounded-lg border border-emerald-500/20 bg-slate-800/60 p-5">
             <h3 className="text-sm font-semibold text-emerald-300 mb-3">Pricing</h3>
             <div className="space-y-2">
-              <Row label="Input / 1M tokens" value={"$" + m.pricing.inputPerMillion.toFixed(4)} />
-              <Row label="Output / 1M tokens" value={"$" + m.pricing.outputPerMillion.toFixed(4)} />
-              <Row label="Context Window" value={(m.pricing.contextTokens / 1024).toFixed(0) + "K"} />
+              <Row label="Input / 1M tokens" value={"$" + (m.pricing?.inputPerMillion ?? 0).toFixed(4)} />
+              <Row label="Output / 1M tokens" value={"$" + (m.pricing?.outputPerMillion ?? 0).toFixed(4)} />
+              <Row label="Context Window" value={((m.pricing?.contextTokens ?? 0) / 1024).toFixed(0) + "K"} />
               <hr className="border-slate-600 my-2" />
-              <Row label="Session Est (50K in)" value={"$" + config.sessionEstimate.totalCost.toFixed(4)} />
-              <Row label="Daily Est (20 sess)" value={"$" + config.dailyEstimate.totalCost.toFixed(4)} />
-              <Row label="Monthly Est" value={"$" + (config.dailyEstimate.totalCost * 30).toFixed(2)} />
+              <Row label="Session Est (50K in)" value={"$" + (config.sessionEstimate?.totalCost ?? 0).toFixed(4)} />
+              <Row label="Daily Est (20 sess)" value={"$" + (config.dailyEstimate?.totalCost ?? 0).toFixed(4)} />
+              <Row label="Monthly Est" value={"$" + ((config.dailyEstimate?.totalCost ?? 0) * 30).toFixed(2)} />
               <hr className="border-slate-600 my-2" />
-              <Row label="vs GLM-5.1 Input" value={config.savingsVsGlm51.inputPct + "% cheaper"} />
-              <Row label="vs GLM-5.1 Output" value={config.savingsVsGlm51.outputPct + "% cheaper"} />
+              <Row label="vs GLM-5.1 Input" value={(config.savingsVsGlm51?.inputPct ?? 0) + "% cheaper"} />
+              <Row label="vs GLM-5.1 Output" value={(config.savingsVsGlm51?.outputPct ?? 0) + "% cheaper"} />
             </div>
           </div>
         </div>
@@ -396,10 +398,10 @@ export default function HermesConfigSection() {
                       </Badge>
                     </td>
                     <td className="py-2 pr-4 text-emerald-300 font-mono">
-                      ${info.pricing.input.toFixed(4)}
+                      ${(info.pricing?.input ?? 0).toFixed(4)}
                     </td>
                     <td className="py-2 text-emerald-300 font-mono">
-                      ${info.pricing.output.toFixed(4)}
+                      ${(info.pricing?.output ?? 0).toFixed(4)}
                     </td>
                   </tr>
                 ))}
@@ -455,25 +457,25 @@ export default function HermesConfigSection() {
             <CostCard
               title="Per Session"
               items={[
-                { label: "Input (50K tokens)", value: "$" + config.sessionEstimate.inputCost.toFixed(4) },
-                { label: "Output (10K tokens)", value: "$" + config.sessionEstimate.outputCost.toFixed(4) },
-                { label: "Total", value: "$" + config.sessionEstimate.totalCost.toFixed(4), bold: true },
+                { label: "Input (50K tokens)", value: "$" + (config.sessionEstimate?.inputCost ?? 0).toFixed(4) },
+                { label: "Output (10K tokens)", value: "$" + (config.sessionEstimate?.outputCost ?? 0).toFixed(4) },
+                { label: "Total", value: "$" + (config.sessionEstimate?.totalCost ?? 0).toFixed(4), bold: true },
               ]}
             />
             <CostCard
               title="Per Day (20 sessions)"
               items={[
-                { label: "Input (1M tokens)", value: "$" + (config.dailyEstimate.totalInputTokens / 1_000_000 * m.pricing.inputPerMillion).toFixed(4) },
-                { label: "Output (200K tokens)", value: "$" + (config.dailyEstimate.totalOutputTokens / 1_000_000 * m.pricing.outputPerMillion).toFixed(4) },
-                { label: "Total", value: "$" + config.dailyEstimate.totalCost.toFixed(4), bold: true },
+                { label: "Input (1M tokens)", value: "$" + ((config.dailyEstimate?.totalInputTokens ?? 0) / 1_000_000 * (m.pricing?.inputPerMillion ?? 0)).toFixed(4) },
+                { label: "Output (200K tokens)", value: "$" + ((config.dailyEstimate?.totalOutputTokens ?? 0) / 1_000_000 * (m.pricing?.outputPerMillion ?? 0)).toFixed(4) },
+                { label: "Total", value: "$" + (config.dailyEstimate?.totalCost ?? 0).toFixed(4), bold: true },
               ]}
             />
             <CostCard
               title="Per Month"
               items={[
-                { label: "Input (~30M tokens)", value: "$" + (config.dailyEstimate.totalCost * 30 * 0.7).toFixed(2) },
-                { label: "Output (~6M tokens)", value: "$" + (config.dailyEstimate.totalCost * 30 * 0.3).toFixed(2) },
-                { label: "Total", value: "$" + (config.dailyEstimate.totalCost * 30).toFixed(2), bold: true },
+                { label: "Input (~30M tokens)", value: "$" + ((config.dailyEstimate?.totalCost ?? 0) * 30 * 0.7).toFixed(2) },
+                { label: "Output (~6M tokens)", value: "$" + ((config.dailyEstimate?.totalCost ?? 0) * 30 * 0.3).toFixed(2) },
+                { label: "Total", value: "$" + ((config.dailyEstimate?.totalCost ?? 0) * 30).toFixed(2), bold: true },
               ]}
             />
           </div>
