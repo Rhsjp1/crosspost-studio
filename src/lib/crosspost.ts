@@ -86,12 +86,21 @@ async function postToPlatform(
   }
 
   const toolkit = PLATFORM_TOOLKITS[platform];
-  const actionName = `${toolkit}_CREATE_POST`;
+  // Composio v3 tool slug, e.g. LINKEDIN_CREATE_LINKED_IN_POST.
+  // Mapping for the create-post tools per platform:
+  const TOOL_SLUG: Record<Platform, string> = {
+    facebook: "FACEBOOK_CREATE_POST",
+    instagram: "INSTAGRAM_CREATE_POST",
+    linkedin: "LINKEDIN_CREATE_LINKED_IN_POST",
+    x: "TWITTER_CREATE_POST",
+    youtube: "YOUTUBE_CREATE_POST",
+    tiktok: "TIKTOK_CREATE_POST",
+  };
+  const toolSlug = TOOL_SLUG[platform];
 
-  // Composio v3 action execution.
+  // Composio v3 tool execution: POST /api/v3/tools/execute/{tool_slug}
   const body: Record<string, unknown> = {
     connected_account_id: accountId,
-    action_name: actionName,
     input: {
       text: req.text,
       ...(req.media_url ? { media_url: req.media_url } : {}),
@@ -101,11 +110,14 @@ async function postToPlatform(
   };
 
   try {
-    const res = await fetch(`${COMPOSIO_BASE}/api/v3/actions/execute`, {
-      method: "POST",
-      headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const res = await fetch(
+      `${COMPOSIO_BASE}/api/v3/tools/execute/${toolSlug}`,
+      {
+        method: "POST",
+        headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
     if (!res.ok) {
       const err = await res.text().catch(() => "");
       return { platform, post_id: null, status: "error", detail: `HTTP ${res.status}: ${err.slice(0, 200)}` };
