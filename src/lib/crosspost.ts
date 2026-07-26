@@ -71,6 +71,56 @@ async function getConnectedAccount(platform: Platform): Promise<string | null> {
   return conn?.accountId || null;
 }
 
+/** Read a stored metadata value from a Connection row (e.g. pageId). */
+async function getConnectionMeta(
+  accountId: string,
+  key: string
+): Promise<string | null> {
+  const conn = await db.connection.findFirst({ where: { accountId } });
+  if (!conn) return null;
+  const raw = conn.accountName || "{}";
+  try {
+    const meta = JSON.parse(raw);
+    return meta[key] || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fetch the LinkedIn author URN for a connected account via Composio. */
+async function getLinkedInAuthorUrn(
+  accountId: string,
+  apiKey: string
+): Promise<string | null> {
+  // First try the locally cached URN.
+  const cached = await getConnectionMeta(accountId, "authorUrn");
+  if (cached) return cached;
+  try {
+    const res = await fetch(
+      `${COMPOSIO_BASE}/api/v3/connected_accounts/${accountId}`,
+      { headers: { "x-api-key": apiKey } }
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      user_metadata?: { id?: string; username?: string };
+      accountName?: string;
+    };
+    const id = data.user_metadata?.id || data.user_metadata?.username;
+    if (id) {
+      const urn = id.startsWith("urn:") ? id : `urn:li:person:${id}`;
+      // cache it
+      await db.connection.updateMany({
+        where: { accountId },
+        data: { accountName: JSON.stringify({ authorUrn: urn }) },
+      }).catch(() => {});
+      return urn;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 /**
  * Post to a single platform via Composio.
  * Uses the v3 action-execution endpoint with the toolkit's create-post action.
@@ -86,8 +136,8 @@ async function postToPlatform(
   }
 
   const toolkit = PLATFORM_TOOLKITS[platform];
-  // Composio v3 tool slug, e.g. LINKEDIN_CREATE_LINKED_IN_POST.
-  // Mapping for the create-post tools per platform:
+  // Composio v3 tool slug per platform. NOTE: each platform's create-post
+  // tool has a DIFFERENT input schema, so we translate the generic request.
   const TOOL_SLUG: Record<Platform, string> = {
     facebook: "FACEBOOK_CREATE_POST",
     instagram: "INSTAGRAM_CREATE_POST",
@@ -98,15 +148,34 @@ async function postToPlatform(
   };
   const toolSlug = TOOL_SLUG[platform];
 
+  // Build the platform-specific input from the generic request.
+  const input: Record<string, unknown> = {};
+  if (platform === "linkedin") {
+    // LinkedIn needs `commentary` (the text) + `author` (member/org URN).
+    const authorUrn = await getLinkedInAuthorUrn(accountId, apiKey);
+    input.commentary = req.text;
+    if (authorUrn) input.author = authorUrn;
+    input.visibility = "PUBLIC";
+    input.lifecycleState = "PUBLISHED";
+    if (req.link_url) input.commentary = `${req.text}\n\n${req.link_url}`;
+  } else if (platform === "facebook") {
+    const pageId = await getConnectionMeta(accountId, "pageId");
+    input.message = req.text;
+    if (pageId) input.page_id = pageId;
+    if (req.link_url) input.link = req.link_url;
+    if (req.media_url) input.link = req.media_url;
+  } else if (platform === "x") {
+    input.text = req.text;
+  } else if (platform === "instagram") {
+    return { platform, post_id: null, status: "error", detail: "Instagram requires media upload (not supported via text post)" };
+  } else if (platform === "youtube" || platform === "tiktok") {
+    return { platform, post_id: null, status: "error", detail: `${platform} requires media upload (not supported via text post)` };
+  }
+
   // Composio v3 tool execution: POST /api/v3/tools/execute/{tool_slug}
   const body: Record<string, unknown> = {
     connected_account_id: accountId,
-    input: {
-      text: req.text,
-      ...(req.media_url ? { media_url: req.media_url } : {}),
-      ...(req.link_url ? { link: req.link_url } : {}),
-      ...(req.schedule_at ? { scheduled_time: req.schedule_at } : {}),
-    },
+    input,
   };
 
   try {
