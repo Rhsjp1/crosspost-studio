@@ -41,6 +41,9 @@ export const PostRequestSchema = z.object({
   schedule_at: z.string().datetime().optional(),
   tags: z.array(z.string()).optional(),
   campaign: z.string().optional(),
+  // Facebook only: select a connected Page by alias (e.g. "main", "products").
+  // Omit to use the default Page (the Connection flagged isDefault, else first).
+  page_alias: z.string().optional(),
 });
 export type PostRequest = z.infer<typeof PostRequestSchema>;
 
@@ -62,13 +65,50 @@ async function getComposioApiKey(): Promise<string | null> {
   }
 }
 
-/** Get a connected Composio account id for a platform (latest connected one). */
-async function getConnectedAccount(platform: Platform): Promise<string | null> {
-  const conn = await db.connection.findFirst({
+/**
+ * Get a connected Composio account id for a platform.
+ * For Facebook, an optional page_alias selects a specific Page Connection
+ * (matched against the `alias` field in the Connection's accountName JSON).
+ * If no alias is given, the Connection flagged isDefault is used; failing that,
+ * the most recently updated connected account.
+ */
+async function getConnectedAccount(
+  platform: Platform,
+  pageAlias?: string
+): Promise<{ accountId: string | null; connId?: string }> {
+  const conns = await db.connection.findMany({
     where: { platform, status: "connected" },
     orderBy: { updatedAt: "desc" },
   });
-  return conn?.accountId || null;
+  if (conns.length === 0) return { accountId: null };
+
+  if (platform === "facebook" && pageAlias) {
+    const match = conns.find((c) => {
+      try {
+        const meta = JSON.parse(c.accountName || "{}");
+        return meta.alias === pageAlias;
+      } catch {
+        return false;
+      }
+    });
+    if (match) return { accountId: match.accountId, connId: match.id };
+    // alias not found — surface a clear "not_connected" style result
+    return { accountId: null };
+  }
+
+  if (platform === "facebook") {
+    const def = conns.find((c) => {
+      try {
+        return JSON.parse(c.accountName || "{}").isDefault === true;
+      } catch {
+        return false;
+      }
+    });
+    const chosen = def || conns[0];
+    return { accountId: chosen.accountId, connId: chosen.id };
+  }
+
+  return { accountId: conns[0].accountId, connId: conns[0].id };
 }
 
 /** Read a stored metadata value from a Connection row (e.g. pageId). */
@@ -130,9 +170,13 @@ async function postToPlatform(
   req: PostRequest,
   apiKey: string
 ): Promise<PlatformResult> {
-  const accountId = await getConnectedAccount(platform);
+  const { accountId } = await getConnectedAccount(platform, req.page_alias);
   if (!accountId) {
-    return { platform, post_id: null, status: "not_connected", detail: "No connected account" };
+    const detail =
+      platform === "facebook" && req.page_alias
+        ? `No connected Facebook Page with alias "${req.page_alias}"`
+        : "No connected account";
+    return { platform, post_id: null, status: "not_connected", detail };
   }
 
   const toolkit = PLATFORM_TOOLKITS[platform];
