@@ -173,9 +173,13 @@ async function postToPlatform(
   }
 
   // Composio v3 tool execution: POST /api/v3/tools/execute/{tool_slug}
+  // Composio expects `arguments` (not `input`) and requires the entity_id
+  // that owns the connected account.
+  const ENTITY_ID = "righthandservicesbyjp@gmail.com";
   const body: Record<string, unknown> = {
     connected_account_id: accountId,
-    input,
+    entity_id: ENTITY_ID,
+    arguments: input,
   };
 
   try {
