@@ -174,16 +174,22 @@ export type GbpPostInput = {
   callToActionType?: string; // e.g. "LEARN_MORE", "BOOK", "ORDER"
 };
 
+export type GbpPostPlan = {
+  url: string;
+  method: "POST";
+  body: Record<string, unknown>;
+};
+
 /**
- * Create a GBP Local Post on a specific location.
+ * Build (but do NOT send) the GBP Local Post payload for a location.
+ * Returns the exact request that createGbpPost would make.
  * Docs: POST /v4/accounts/{accountId}/locations/{locationId}/localPosts
  */
-export async function createGbpPost(
-  accessToken: string,
+export function buildGbpPostPayload(
   accountId: string,
   locationId: string,
   input: GbpPostInput
-): Promise<{ name?: string }> {
+): GbpPostPlan {
   const summary = input.text.slice(0, 1500);
   const body: Record<string, unknown> = { languageCode: "en-US", summary };
   if (input.link_url || input.callToActionType) {
@@ -193,22 +199,43 @@ export async function createGbpPost(
     };
   }
   if (input.media_url) {
-    body.media = [
-      { mediaFormat: "PHOTO", sourceUrl: input.media_url },
-    ];
+    body.media = [{ mediaFormat: "PHOTO", sourceUrl: input.media_url }];
+  }
+  return {
+    url: `${LOCALPOST_BASE}/accounts/${accountId}/locations/${locationId}/localPosts`,
+    method: "POST",
+    body,
+  };
+}
+
+/**
+ * Create a GBP Local Post on a specific location.
+ * Docs: POST /v4/accounts/{accountId}/locations/{locationId}/localPosts
+ *
+ * When `dryRun` is true, no network call is made — instead the resolved
+ * request payload is returned so callers can preview exactly what would be
+ * published (used by /api/post?dry_run=1).
+ */
+export async function createGbpPost(
+  accessToken: string,
+  accountId: string,
+  locationId: string,
+  input: GbpPostInput,
+  dryRun = false
+): Promise<{ name?: string; _dryRun?: GbpPostPlan }> {
+  const plan = buildGbpPostPayload(accountId, locationId, input);
+  if (dryRun) {
+    return { _dryRun: plan };
   }
 
-  const res = await fetch(
-    `${LOCALPOST_BASE}/accounts/${accountId}/locations/${locationId}/localPosts`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    }
-  );
+  const res = await fetch(plan.url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(plan.body),
+  });
   if (!res.ok) {
     const err = await res.text().catch(() => "");
     throw new Error(`createGbpPost failed (${res.status}): ${err.slice(0, 400)}`);

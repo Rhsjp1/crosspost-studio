@@ -38,14 +38,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid body", detail: String(e) }, { status: 400 });
   }
 
+  const searchParams = new URL(req.url).searchParams;
+  const dryRun = searchParams.get("dry_run") === "1";
+
   const result = await postToGbp(body.userId, {
     text: body.text,
     link_url: body.link_url,
     media_url: body.media_url,
     callToActionType: body.callToActionType,
-  }, body.locationId);
+  }, body.locationId, dryRun);
 
-  await logGbpPost({ ...body, result });
+  if (!dryRun) {
+    await logGbpPost({ ...body, result });
+  }
   return NextResponse.json(result, { status: result.status === "success" ? 200 : 207 });
 }
 

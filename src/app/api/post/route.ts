@@ -30,8 +30,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 3. Fan out
-  const results: PlatformResult[] = await crossPost(parsed.data);
+  // 3. Fan out (dry-run when explicitly requested — no real publish)
+  const searchParams = new URL(req.url).searchParams;
+  const dryRun = searchParams.get("dry_run") === "1" || parsed.data.dryRun === true;
+  const results: PlatformResult[] = await crossPost(parsed.data, { dryRun });
 
   // 4. Per spec response shape
   const allOk = results.every(
@@ -39,7 +41,8 @@ export async function POST(req: NextRequest) {
   );
   return NextResponse.json(
     {
-      status: allOk ? "ok" : "partial",
+      status: dryRun ? "dry_run" : allOk ? "ok" : "partial",
+      dryRun,
       results,
     },
     { status: allOk ? 200 : 207 }

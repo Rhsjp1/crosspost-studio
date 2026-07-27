@@ -46,6 +46,8 @@ export const PostRequestSchema = z.object({
   // Facebook only: select a connected Page by alias (e.g. "main", "products").
   // Omit to use the default Page (the Connection flagged isDefault, else first).
   page_alias: z.string().optional(),
+  // When true, resolve connections + build the exact payload but DO NOT publish.
+  dryRun: z.boolean().optional(),
 });
 export type PostRequest = z.infer<typeof PostRequestSchema>;
 
@@ -170,7 +172,8 @@ async function getLinkedInAuthorUrn(
 async function postToPlatform(
   platform: Platform,
   req: PostRequest,
-  apiKey: string | null
+  apiKey: string | null,
+  dryRun = false
 ): Promise<PlatformResult> {
   const { accountId } = await getConnectedAccount(platform, req.page_alias);
   if (!accountId) {
@@ -185,11 +188,16 @@ async function postToPlatform(
   // GBP is a DIRECT Google integration (no Composio toolkit) — route it to the worker.
   if (platform === "google_business") {
     const { postToGbp } = await import("./gbp-worker");
-    const r = await postToGbp(req.userId || "", {
-      text: req.text,
-      link_url: req.link_url,
-      media_url: req.media_url,
-    });
+    const r = await postToGbp(
+      req.userId || "",
+      {
+        text: req.text,
+        link_url: req.link_url,
+        media_url: req.media_url,
+      },
+      undefined,
+      dryRun
+    );
     return {
       platform,
       post_id: r.post_name || null,
@@ -275,10 +283,14 @@ async function postToPlatform(
 }
 
 /** Fan out one request across all requested platforms. */
-export async function crossPost(req: PostRequest): Promise<PlatformResult[]> {
+export async function crossPost(
+  req: PostRequest,
+  opts?: { dryRun?: boolean }
+): Promise<PlatformResult[]> {
+  const dryRun = opts?.dryRun ?? false;
   const apiKey = await getComposioApiKey();
   const results = await Promise.all(
-    req.platforms.map((p) => (apiKey || p === "google_business" ? postToPlatform(p, req, apiKey) : Promise.resolve({
+    req.platforms.map((p) => (apiKey || p === "google_business" ? postToPlatform(p, req, apiKey, dryRun) : Promise.resolve({
       platform: p,
       post_id: null,
       status: "not_connected" as const,

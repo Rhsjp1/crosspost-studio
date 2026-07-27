@@ -26,7 +26,8 @@ export type GbpPostResult = {
 export async function postToGbp(
   userId: string,
   input: GbpPostInput,
-  locationIdOverride?: string
+  locationIdOverride?: string,
+  dryRun = false
 ): Promise<GbpPostResult> {
   const conn = await db.connection.findFirst({
     where: { platform: GBP_PLATFORM, userId, status: "connected" },
@@ -40,6 +41,8 @@ export async function postToGbp(
     const meta = JSON.parse(conn.accountName || "{}") as {
       accountId?: string;
       defaultLocationId?: string;
+      accountName?: string;
+      locations?: Array<{ locationId: string; title: string }>;
     };
     const accountId = meta.accountId;
     const locationId = locationIdOverride || meta.defaultLocationId;
@@ -47,7 +50,25 @@ export async function postToGbp(
       return { status: "error", detail: "Connection missing accountId or locationId" };
     }
 
-    const res = await createGbpPost(accessToken, accountId, locationId, input);
+    const res = await createGbpPost(accessToken, accountId, locationId, input, dryRun);
+    if (dryRun) {
+      const plan = res._dryRun!;
+      const locTitle =
+        meta.locations?.find((l) => l.locationId === locationId)?.title ||
+        meta.accountName ||
+        locationId;
+      return {
+        status: "success",
+        post_name: "dry-run",
+        detail: JSON.stringify({
+          dryRun: true,
+          accountId,
+          locationId,
+          locationTitle: locTitle,
+          request: plan,
+        }),
+      };
+    }
     return { status: "success", post_name: res.name };
   } catch (err) {
     return { status: "error", detail: String(err).slice(0, 300) };
