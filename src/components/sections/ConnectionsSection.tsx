@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { create } from "zustand";
 
 const useStore = create<{ setActiveSection: (s: string) => void }>((set) => ({
@@ -29,6 +29,26 @@ function ConnectionsSection() {
     queryKey: ["settings"],
     queryFn: () => fetch("/api/settings").then((r) => r.json()),
   });
+
+  const queryClient = useQueryClient();
+
+  // GBP uses a DIRECT Google OAuth flow (not Composio). Open the dedicated
+  // /api/auth/gbp/start endpoint in a popup; after consent, Google redirects
+  // back to /api/auth/callback which writes the Connection row, then closes
+  // back to the connections page. When the popup closes we refetch.
+  const handleGbpConnect = () => {
+    const w = window.open(
+      "/api/auth/gbp/start",
+      "gbp_oauth",
+      "width=600,height=700"
+    );
+    const poll = setInterval(() => {
+      if (!w || w.closed) {
+        clearInterval(poll);
+        queryClient.invalidateQueries({ queryKey: ["connections"] });
+      }
+    }, 1000);
+  };
 
   const hasApiKey = settings?.COMPOSIO_API_KEY;
 
@@ -100,28 +120,38 @@ function ConnectionsSection() {
                   {anyConnected ? (
                     <span className="badge badge-success">{conns.length} Connected</span>
                   ) : (
-                    <button
-                      className="btn-secondary text-xs"
-                      disabled={!hasApiKey && platform.provider === "composio"}
-                      onClick={() => handleConnect(platform.id)}
-                      title={
-                        !hasApiKey && platform.provider === "composio"
-                          ? "Configure API key in Settings first"
+                    platform.id === "google_business" ? (
+                      <button
+                        className="btn-secondary text-xs"
+                        onClick={handleGbpConnect}
+                        title="Connect via Google (Business Profile)"
+                      >
+                        Connect GBP
+                      </button>
+                    ) : (
+                      <button
+                        className="btn-secondary text-xs"
+                        disabled={!hasApiKey && platform.provider === "composio"}
+                        onClick={() => handleConnect(platform.id)}
+                        title={
+                          !hasApiKey && platform.provider === "composio"
+                            ? "Configure API key in Settings first"
+                            : platform.provider === "ghl"
+                            ? "Connect via GoHighLevel"
+                            : platform.provider === "native"
+                            ? "Coming soon"
+                            : `Connect ${platform.name}`
+                        }
+                      >
+                        {!hasApiKey && platform.provider === "composio"
+                          ? "Setup Required"
                           : platform.provider === "ghl"
-                          ? "Connect via GoHighLevel"
+                          ? "GHL Connect"
                           : platform.provider === "native"
-                          ? "Coming soon"
-                          : `Connect ${platform.name}`
-                      }
-                    >
-                      {!hasApiKey && platform.provider === "composio"
-                        ? "Setup Required"
-                        : platform.provider === "ghl"
-                        ? "GHL Connect"
-                        : platform.provider === "native"
-                        ? "Coming Soon"
-                        : "Connect"}
-                    </button>
+                          ? "Coming Soon"
+                          : "Connect"}
+                      </button>
+                    )
                   )}
                 </div>
               </div>
