@@ -19,12 +19,13 @@ export const PLATFORMS = [
   "x",
   "youtube",
   "tiktok",
+  "google_business",
 ] as const;
 
 export type Platform = (typeof PLATFORMS)[number];
 
-/** Composio toolkit slug per platform. "twitter" => X. */
-export const PLATFORM_TOOLKITS: Record<Platform, string> = {
+/** Composio toolkit slug per platform. "twitter" => X. Null = not Composio (e.g. GBP is direct). */
+export const PLATFORM_TOOLKITS: Partial<Record<Platform, string>> = {
   facebook: "facebook",
   instagram: "instagram",
   linkedin: "linkedin",
@@ -35,6 +36,7 @@ export const PLATFORM_TOOLKITS: Record<Platform, string> = {
 
 export const PostRequestSchema = z.object({
   platforms: z.array(z.enum(PLATFORMS)).min(1, "At least one platform required"),
+  userId: z.string().min(1).optional(), // required for google_business (GBP)
   text: z.string().min(1, "text is required").max(5000),
   media_url: z.string().url().optional(),
   link_url: z.string().url().optional(),
@@ -168,7 +170,7 @@ async function getLinkedInAuthorUrn(
 async function postToPlatform(
   platform: Platform,
   req: PostRequest,
-  apiKey: string
+  apiKey: string | null
 ): Promise<PlatformResult> {
   const { accountId } = await getConnectedAccount(platform, req.page_alias);
   if (!accountId) {
@@ -180,9 +182,24 @@ async function postToPlatform(
   }
 
   const toolkit = PLATFORM_TOOLKITS[platform];
+  // GBP is a DIRECT Google integration (no Composio toolkit) — route it to the worker.
+  if (platform === "google_business") {
+    const { postToGbp } = await import("./gbp-worker");
+    const r = await postToGbp(req.userId || "", {
+      text: req.text,
+      link_url: req.link_url,
+      media_url: req.media_url,
+    });
+    return {
+      platform,
+      post_id: r.post_name || null,
+      status: r.status === "success" ? "success" : r.status === "not_connected" ? "not_connected" : "error",
+      detail: r.detail,
+    };
+  }
   // Composio v3 tool slug per platform. NOTE: each platform's create-post
   // tool has a DIFFERENT input schema, so we translate the generic request.
-  const TOOL_SLUG: Record<Platform, string> = {
+  const TOOL_SLUG: Partial<Record<Platform, string>> = {
     facebook: "FACEBOOK_CREATE_POST",
     instagram: "INSTAGRAM_CREATE_POST",
     linkedin: "LINKEDIN_CREATE_LINKED_IN_POST",
@@ -191,6 +208,12 @@ async function postToPlatform(
     tiktok: "TIKTOK_CREATE_POST",
   };
   const toolSlug = TOOL_SLUG[platform];
+  if (!toolSlug) {
+    return { platform, post_id: null, status: "error", detail: `No tool slug for ${platform}` };
+  }
+  if (!apiKey) {
+    return { platform, post_id: null, status: "error", detail: "Composio API key not configured" };
+  }
 
   // Build the platform-specific input from the generic request.
   const input: Record<string, unknown> = {};
@@ -255,7 +278,7 @@ async function postToPlatform(
 export async function crossPost(req: PostRequest): Promise<PlatformResult[]> {
   const apiKey = await getComposioApiKey();
   const results = await Promise.all(
-    req.platforms.map((p) => (apiKey ? postToPlatform(p, req, apiKey) : Promise.resolve({
+    req.platforms.map((p) => (apiKey || p === "google_business" ? postToPlatform(p, req, apiKey) : Promise.resolve({
       platform: p,
       post_id: null,
       status: "not_connected" as const,
