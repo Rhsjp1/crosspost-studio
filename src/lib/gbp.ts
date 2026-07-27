@@ -24,7 +24,13 @@ export const GBP_SCOPE = "https://www.googleapis.com/auth/business.manage";
 export const GBP_PLATFORM = "google_business";
 
 export function gbpRedirectUri(): string {
-  const base = process.env.NEXTAUTH_URL || "http://localhost:3000";
+  // Prefer an explicit GBP redirect base so the OAuth `redirect_uri` always
+  // matches an authorized URI on the Google client (the azure custom domain).
+  // Falls back to NEXTAUTH_URL, then localhost for dev.
+  const base =
+    process.env.GBP_REDIRECT_URI ||
+    process.env.NEXTAUTH_URL ||
+    "http://localhost:3000";
   return `${base.replace(/\/$/, "")}/api/auth/callback`;
 }
 
