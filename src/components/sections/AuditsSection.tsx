@@ -7,31 +7,31 @@ const AUDIT_TYPES = [
   {
     id: "seo",
     name: "SEO Analysis",
-    description: "Analyze meta tags, heading structure, keyword density, and search readiness.",
+    description: "Technical SEO, on-page elements, content quality, social/rich snippets, and local SEO.",
     icon: "🔍",
   },
   {
     id: "accessibility",
     name: "Accessibility Check",
-    description: "Review alt attributes, ARIA labels, and form label usage.",
+    description: "HTML structure, image alt text, ARIA labels, keyboard navigation, heading hierarchy, and WCAG color contrast.",
     icon: "♿",
   },
   {
     id: "performance",
     name: "Performance",
-    description: "Measure page load time and response speed.",
+    description: "Core Web Vitals (LCP proxy), resource analysis, caching/compression, and mobile-friendliness.",
     icon: "⚡",
   },
   {
     id: "security",
     name: "Security Headers",
-    description: "Check for CSP, X-Frame-Options, and HTTPS usage.",
+    description: "HTTPS/HSTS, Content-Security-Policy, clickjacking protection, referrer policy, and information disclosure.",
     icon: "🔒",
   },
   {
     id: "links",
     name: "Link Audit",
-    description: "Count outbound links and unique linked domains.",
+    description: "External backlink profile, internal link architecture, broken link indicators, and link quality.",
     icon: "🌐",
   },
 ];
@@ -54,13 +54,55 @@ function normalizeUrl(raw: string): string {
   return `https://${trimmed}`;
 }
 
-function parseFindings(findings: string): string[] {
+type FindingStatus = "pass" | "warn" | "fail" | "info";
+
+interface StructuredFinding {
+  category: string;
+  status: FindingStatus;
+  message: string;
+}
+
+function parseFindings(findings: string): StructuredFinding[] {
   try {
     const parsed = JSON.parse(findings);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((f: unknown) => {
+      if (typeof f === "string") {
+        return { category: "General", status: "info" as FindingStatus, message: f };
+      }
+      const obj = f as Record<string, unknown>;
+      return {
+        category: (obj.category as string) || "General",
+        status: (obj.status as FindingStatus) || "info",
+        message: (obj.message as string) || "",
+      };
+    });
   } catch {
     return [];
   }
+}
+
+const STATUS_ICON: Record<FindingStatus, string> = {
+  pass: "\u2705",
+  warn: "\u26A0\uFE0F",
+  fail: "\u274C",
+  info: "\u2139\uFE0F",
+};
+
+const STATUS_COLOR: Record<FindingStatus, string> = {
+  pass: "text-green-400",
+  warn: "text-yellow-400",
+  fail: "text-red-400",
+  info: "text-blue-400",
+};
+
+function groupFindings(findings: StructuredFinding[]): Record<string, StructuredFinding[]> {
+  const groups: Record<string, StructuredFinding[]> = {};
+  for (const f of findings) {
+    if (!groups[f.category]) groups[f.category] = [];
+    groups[f.category].push(f);
+  }
+  return groups;
 }
 
 function downloadReport(run: AuditRun) {
@@ -175,14 +217,24 @@ function AuditHistoryRow({ run }: { run: AuditRun }) {
         <div className="mt-4 space-y-4 border-t border-gray-700/50 pt-4">
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
-              Findings
+              Findings ({findings.length})
             </p>
             {findings.length > 0 ? (
-              <ul className="space-y-1 text-sm text-gray-300">
-                {findings.map((f, i) => (
-                  <li key={i}>• {f}</li>
+              <div className="space-y-4">
+                {Object.entries(groupFindings(findings)).map(([cat, items]) => (
+                  <div key={cat}>
+                    <p className="mb-1 text-xs font-semibold text-gray-300">{cat}</p>
+                    <ul className="space-y-1 text-sm">
+                      {items.map((f, i) => (
+                        <li key={i} className={`flex items-start gap-2 ${STATUS_COLOR[f.status]}`}>
+                          <span className="shrink-0">{STATUS_ICON[f.status]}</span>
+                          <span className="text-gray-300">{f.message}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ))}
-              </ul>
+              </div>
             ) : (
               <p className="text-sm text-gray-500">No findings recorded.</p>
             )}

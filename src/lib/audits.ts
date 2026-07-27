@@ -60,13 +60,24 @@ export function safeHttpUrl(raw: string): { ok: boolean; url?: URL; error?: stri
   return { ok: true, url };
 }
 
-// Helper to parse raw audit result into structured findings
-export function parseAuditResult(raw: string): {
+// ── Finding types ──────────────────────────────────────────────────
+export type FindingStatus = "pass" | "warn" | "fail" | "info";
+
+export interface Finding {
+  category: string;
+  status: FindingStatus;
+  message: string;
+}
+
+export interface AuditResult {
   score: number;
-  findings: string[];
-} {
+  findings: Finding[];
+}
+
+// Helper to parse raw audit result into structured findings
+export function parseAuditResult(raw: string): AuditResult {
   let score = 0;
-  const findings: string[] = [];
+  const findings: Finding[] = [];
 
   try {
     const parsed = JSON.parse(raw);
@@ -76,17 +87,32 @@ export function parseAuditResult(raw: string): {
     if (Array.isArray(parsed.findings)) {
       for (const f of parsed.findings) {
         if (typeof f === "string") {
-          findings.push(f);
-        } else {
-          findings.push(JSON.stringify(f));
+          // Backward compat: old string findings become "info" under "General"
+          findings.push({ category: "General", status: "info", message: f });
+        } else if (f && typeof f === "object" && f.category && f.message) {
+          findings.push({
+            category: f.category,
+            status: f.status || "info",
+            message: f.message,
+          });
         }
       }
     }
   } catch {
     // Non-JSON result: treat the whole string as a single finding, score 50
     score = 50;
-    findings.push(raw || "Audit completed but no structured results available");
+    findings.push({ category: "General", status: "warn", message: raw || "Audit completed but no structured results available" });
   }
 
   return { score, findings };
+}
+
+// Score calculator: start at 100, subtract for warn/fail
+export function calculateScore(findings: Finding[]): number {
+  let score = 100;
+  for (const f of findings) {
+    if (f.status === "fail") score -= 12;
+    else if (f.status === "warn") score -= 5;
+  }
+  return Math.max(0, Math.min(100, score));
 }
