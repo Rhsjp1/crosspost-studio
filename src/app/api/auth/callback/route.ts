@@ -14,6 +14,25 @@ import {
 //
 // NOTE: this static route takes precedence over /api/auth/[...nextauth] for the
 // exact path /api/auth/callback, so NextAuth's catch-all is unaffected.
+
+/** Retry a Google API call on 429/5xx with simple backoff. */
+async function withRetry<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err);
+      const isRetryable = /429|403|500|502|503|504/.test(msg);
+      if (!isRetryable || i === attempts - 1) throw err;
+      // exponential-ish backoff: 1s, 2s, 4s
+      await new Promise((r) => setTimeout(r, 1000 * 2 ** i));
+    }
+  }
+  throw lastErr;
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
@@ -34,26 +53,13 @@ export async function GET(req: Request) {
     const accessToken = tokens.access_token;
     const expiresAt = new Date(Date.now() + (tokens.expires_in || 3600) * 1000);
 
-    const accounts = await listGbpAccounts(accessToken);
-    if (accounts.length === 0) {
-      return NextResponse.redirect(`${base}?section=connections&gbp_error=no_accounts`);
-    }
-
-    const account = accounts[0];
-    const locations = await listGbpLocations(accessToken, account.id);
-    const defaultLocation = locations[0];
-
+    // Persist the connection EARLY (right after we have tokens) so a transient
+    // quota/rate-limit (429) on account/location discovery can't waste the
+    // OAuth grant. We update accountName with discovery results below.
     const existing = await db.connection.findFirst({
       where: { platform: GBP_PLATFORM, userId: state },
     });
-
-    const accountName = JSON.stringify({
-      accountId: account.id,
-      accountName: account.name,
-      locations,
-      defaultLocationId: defaultLocation?.locationId || null,
-    });
-
+    const baseAccountName = JSON.stringify({ discovered: false });
     if (existing) {
       await db.connection.update({
         where: { id: existing.id },
@@ -62,7 +68,7 @@ export async function GET(req: Request) {
           accessToken,
           refreshToken: tokens.refresh_token || existing.refreshToken,
           expiresAt,
-          accountName,
+          accountName: baseAccountName,
         },
       });
     } else {
@@ -74,11 +80,39 @@ export async function GET(req: Request) {
           accessToken,
           refreshToken: tokens.refresh_token || null,
           expiresAt,
-          accountName,
-          label: account.name,
+          accountName: baseAccountName,
+          label: "Google Business Profile",
         },
       });
     }
+
+    // Discover account + locations (retry on transient quota/rate errors).
+    const accounts = await withRetry(() => listGbpAccounts(accessToken));
+    if (accounts.length === 0) {
+      // Grant is fine; no GBP account managed by this Google user.
+      return NextResponse.redirect(`${base}?section=connections&gbp_error=no_accounts`);
+    }
+
+    const account = accounts[0];
+    const locations = await withRetry(() =>
+      listGbpLocations(accessToken, account.id)
+    );
+    const defaultLocation = locations[0];
+
+    const accountName = JSON.stringify({
+      accountId: account.id,
+      accountName: account.name,
+      locations,
+      defaultLocationId: defaultLocation?.locationId || null,
+      discovered: true,
+    });
+
+    await db.connection.update({
+      where: { id: existing?.id || (await db.connection.findFirst({
+        where: { platform: GBP_PLATFORM, userId: state },
+      }))!.id },
+      data: { accountName },
+    });
 
     await db.historyEvent.create({
       data: { action: "gbp_connected", details: JSON.stringify({ accountId: account.id, locations: locations.length }) },
