@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { create } from "zustand";
 
 const useStore = create<{ setActiveSection: (s: string) => void }>((set) => ({
@@ -30,24 +30,14 @@ function ConnectionsSection() {
     queryFn: () => fetch("/api/settings").then((r) => r.json()),
   });
 
-  const queryClient = useQueryClient();
-
-  // GBP uses a DIRECT Google OAuth flow (not Composio). Open the dedicated
-  // /api/auth/gbp/start endpoint in a popup; after consent, Google redirects
-  // back to /api/auth/callback which writes the Connection row, then closes
-  // back to the connections page. When the popup closes we refetch.
+  // GBP uses a DIRECT Google OAuth flow (not Composio). Navigate in the SAME
+  // tab to the dedicated /api/auth/gbp/start endpoint. After consent, Google
+  // redirects back to /api/auth/callback which writes the Connection row and
+  // sends us back to the connections page. We refetch connections on return.
+  // (Same-tab navigation avoids popup blockers, which were silently swallowing
+  // the connect attempt.)
   const handleGbpConnect = () => {
-    const w = window.open(
-      "/api/auth/gbp/start",
-      "gbp_oauth",
-      "width=600,height=700"
-    );
-    const poll = setInterval(() => {
-      if (!w || w.closed) {
-        clearInterval(poll);
-        queryClient.invalidateQueries({ queryKey: ["connections"] });
-      }
-    }, 1000);
+    window.location.assign("/api/auth/gbp/start");
   };
 
   const hasApiKey = settings?.COMPOSIO_API_KEY;
