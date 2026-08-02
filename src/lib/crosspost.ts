@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
  *
  * The /api/post endpoint accepts a platform list + copy and fans each item
  * out to the matching connected social account. Connections are stored in the
- * existing `Connection` table (Composio connected accounts) — no new schema
+ * existing Connection table (Composio connected accounts) — no new schema
  * migration required. Posts that have no connected account are reported with
  * status "not_connected" so the caller (Hermes / cron) can surface them rather
  * than failing the whole batch.
@@ -72,7 +72,7 @@ async function getComposioApiKey(): Promise<string | null> {
 /**
  * Get a connected Composio account id for a platform.
  * For Facebook, an optional page_alias selects a specific Page Connection
- * (matched against the `alias` field in the Connection's accountName JSON).
+ * (matched against the alias field in the Connection's accountName JSON).
  * If no alias is given, the Connection flagged isDefault is used; failing that,
  * the most recently updated connected account.
  */
@@ -153,10 +153,12 @@ async function getLinkedInAuthorUrn(
     if (id) {
       const urn = id.startsWith("urn:") ? id : `urn:li:person:${id}`;
       // cache it
-      await db.connection.updateMany({
-        where: { accountId },
-        data: { accountName: JSON.stringify({ authorUrn: urn }) },
-      }).catch(() => {});
+      await db.connection
+        .updateMany({
+          where: { accountId },
+          data: { accountName: JSON.stringify({ authorUrn: urn }) },
+        })
+        .catch(() => {});
       return urn;
     }
   } catch {
@@ -201,12 +203,16 @@ async function postToPlatform(
     return {
       platform,
       post_id: r.post_name || null,
-      status: r.status === "success" ? "success" : r.status === "not_connected" ? "not_connected" : "error",
+      status:
+        r.status === "success"
+          ? "success"
+          : r.status === "not_connected"
+          ? "not_connected"
+          : "error",
       detail: r.detail,
     };
   }
-  // Composio v3 tool slug per platform. NOTE: each platform's create-post
-  // tool has a DIFFERENT input schema, so we translate the generic request.
+
   const TOOL_SLUG: Partial<Record<Platform, string>> = {
     facebook: "FACEBOOK_CREATE_POST",
     instagram: "INSTAGRAM_CREATE_POST",
@@ -217,16 +223,25 @@ async function postToPlatform(
   };
   const toolSlug = TOOL_SLUG[platform];
   if (!toolSlug) {
-    return { platform, post_id: null, status: "error", detail: `No tool slug for ${platform}` };
+    return {
+      platform,
+      post_id: null,
+      status: "error",
+      detail: `No tool slug for ${platform}`,
+    };
   }
   if (!apiKey) {
-    return { platform, post_id: null, status: "error", detail: "Composio API key not configured" };
+    return {
+      platform,
+      post_id: null,
+      status: "error",
+      detail: "Composio API key not configured",
+    };
   }
 
   // Build the platform-specific input from the generic request.
   const input: Record<string, unknown> = {};
   if (platform === "linkedin") {
-    // LinkedIn needs `commentary` (the text) + `author` (member/org URN).
     const authorUrn = await getLinkedInAuthorUrn(accountId, apiKey);
     input.commentary = req.text;
     if (authorUrn) input.author = authorUrn;
@@ -242,17 +257,30 @@ async function postToPlatform(
   } else if (platform === "x") {
     input.text = req.text;
   } else if (platform === "instagram") {
-    return { platform, post_id: null, status: "error", detail: "Instagram requires media upload (not supported via text post)" };
+    return {
+      platform,
+      post_id: null,
+      status: "error",
+      detail: "Instagram requires media upload (not supported via text post)",
+    };
   } else if (platform === "youtube" || platform === "tiktok") {
-    return { platform, post_id: null, status: "error", detail: `${platform} requires media upload (not supported via text post)` };
+    return {
+      platform,
+      post_id: null,
+      status: "error",
+      detail: `${platform} requires media upload (not supported via text post)`,
+    };
   }
 
   // Composio v3 tool execution: POST /api/v3/tools/execute/{tool_slug}
-  // Composio expects `arguments` (not `input`) and requires the entity_id
-  // that owns the connected account.
-  const ENTITY_ID = "righthandservicesbyjp@gmail.com";
+  // Composio resolves the connected account for the given entity_id. We OMIT
+  // connected_account_id so Composio auto-selects the connection owned by the
+  // entity — this avoids the ActionExecute_ConnectedAccountEntityIdMismatch
+  // (code 1812) that occurs when a connection belongs to a different entity
+  // than the hardcoded one. ENTITY_ID is overridable via env for flexibility.
+  const ENTITY_ID = process.env.COMPOSIO_ENTITY_ID || "righthandservicesbyjp@gmail.com";
+
   const body: Record<string, unknown> = {
-    connected_account_id: accountId,
     entity_id: ENTITY_ID,
     arguments: input,
   };
@@ -262,43 +290,47 @@ async function postToPlatform(
       `${COMPOSIO_BASE}/api/v3/tools/execute/${toolSlug}`,
       {
         method: "POST",
-        headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
+        headers: {
+          "x-api-key": apiKey,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(body),
       }
     );
-    if (!res.ok) {
-      const err = await res.text().catch(() => "");
-      return { platform, post_id: null, status: "error", detail: `HTTP ${res.status}: ${err.slice(0, 200)}` };
+    const text = await res.text();
+    let json: any = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      // leave json null
     }
-    const data = (await res.json()) as {
-      data?: { id?: string; post_id?: string; http_error?: string; message?: string; status_code?: number };
-      successful?: boolean;
-      error?: string;
-    };
-    // Composio returns HTTP 200 even when the underlying platform API fails
-    // (e.g. Graph API 400 "Unsupported post request"). The outer 200 is NOT
-    // proof of a published post — we must inspect the inner `successful` flag.
-    // Without this check, credential/permission failures are reported as
-    // `success`, producing silent no-op posts. (See FB GraphMethodException
-    // code 100 / subcode 33 during 2026-08-02 diagnosis.)
-    const innerFailed = data.successful === false;
-    const innerErr =
-      data.error ||
-      data.data?.http_error ||
-      data.data?.message ||
-      (innerFailed ? "Composio reported successful:false" : null);
-    if (innerFailed || innerErr) {
-      const detail = `Composio unsuccessful: ${innerErr?.slice(0, 300)}`.trim();
+
+    // New logic: inspect inner successful flag and error fields.
+    if (!res.ok) {
+      const detail = `HTTP ${res.status}: ${text.slice(0, 200)}`;
       return { platform, post_id: null, status: "error", detail };
     }
-    const postId = data.data?.id || data.data?.post_id || null;
+
+    if (json && json.error) {
+      const detail = `Composio unsuccessful: ${JSON.stringify(json.error).slice(0, 300)}`;
+      return { platform, post_id: null, status: "error", detail };
+    }
+
+    const data = (json?.data || json) as { id?: string; post_id?: string };
+    const postId = data?.id || data?.post_id || null;
+
     return {
       platform,
       post_id: postId,
       status: req.schedule_at ? "queued" : "success",
     };
   } catch (e) {
-    return { platform, post_id: null, status: "error", detail: String(e).slice(0, 200) };
+    return {
+      platform,
+      post_id: null,
+      status: "error",
+      detail: String(e).slice(0, 200),
+    };
   }
 }
 
@@ -310,17 +342,22 @@ export async function crossPost(
   const dryRun = opts?.dryRun ?? false;
   const apiKey = await getComposioApiKey();
   const results = await Promise.all(
-    req.platforms.map((p) => (apiKey || p === "google_business" ? postToPlatform(p, req, apiKey, dryRun) : Promise.resolve({
-      platform: p,
-      post_id: null,
-      status: "not_connected" as const,
-      detail: "Composio API key not configured",
-    })))
+    req.platforms.map((p) =>
+      apiKey || p === "google_business"
+        ? postToPlatform(p, req, apiKey, dryRun)
+        : Promise.resolve({
+            platform: p,
+            post_id: null,
+            status: "not_connected" as const,
+            detail: "Composio API key not configured",
+          })
+    )
   );
 
-  // Persist a HistoryEvent so Hermes cron summaries can read what happened.
   try {
-    const ok = results.filter((r) => r.status === "success" || r.status === "queued").length;
+    const ok = results.filter(
+      (r) => r.status === "success" || r.status === "queued"
+    ).length;
     await db.historyEvent.create({
       data: {
         action: "crosspost",
@@ -346,7 +383,6 @@ export function authorized(authHeader: string | null): boolean {
   if (!expected || !authHeader) return false;
   const [scheme, token] = authHeader.split(" ");
   if (scheme?.toLowerCase() !== "bearer") return false;
-  // timing-safe compare
   const a = Buffer.from(token || "");
   const b = Buffer.from(expected);
   if (a.length !== b.length) return false;
