@@ -270,7 +270,27 @@ async function postToPlatform(
       const err = await res.text().catch(() => "");
       return { platform, post_id: null, status: "error", detail: `HTTP ${res.status}: ${err.slice(0, 200)}` };
     }
-    const data = (await res.json()) as { data?: { id?: string; post_id?: string } };
+    const data = (await res.json()) as {
+      data?: { id?: string; post_id?: string; http_error?: string; message?: string; status_code?: number };
+      successful?: boolean;
+      error?: string;
+    };
+    // Composio returns HTTP 200 even when the underlying platform API fails
+    // (e.g. Graph API 400 "Unsupported post request"). The outer 200 is NOT
+    // proof of a published post — we must inspect the inner `successful` flag.
+    // Without this check, credential/permission failures are reported as
+    // `success`, producing silent no-op posts. (See FB GraphMethodException
+    // code 100 / subcode 33 during 2026-08-02 diagnosis.)
+    const innerFailed = data.successful === false;
+    const innerErr =
+      data.error ||
+      data.data?.http_error ||
+      data.data?.message ||
+      (innerFailed ? "Composio reported successful:false" : null);
+    if (innerFailed || innerErr) {
+      const detail = `Composio unsuccessful: ${innerErr?.slice(0, 300)}`.trim();
+      return { platform, post_id: null, status: "error", detail };
+    }
     const postId = data.data?.id || data.data?.post_id || null;
     return {
       platform,
